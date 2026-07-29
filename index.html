@@ -85,8 +85,10 @@
       if (paused) {
         if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 - 4 && y < H / 2 + 46) { paused = false; }
         else if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 58 && y < H / 2 + 108) { resetWorld(); started = true; }
-        else if (seedUnlocked && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 122 && y < H / 2 + 172 && totalMinerals >= 10) { totalMinerals -= 10; treeLevel++; }
         canvas.focus(); return;
+      }
+      if (!started && seedUnlocked && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 142 && totalMinerals >= 50) {
+        totalMinerals -= 50; treeLevel++; canvas.focus(); return;
       }
       if (!started && x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) {
         gameOver = false; started = true;
@@ -285,10 +287,7 @@
         ctx.fillStyle = '#616161'; ctx.fillRect(W / 2 - 105, H / 2 - 4, 210, 50); ctx.fillRect(W / 2 - 105, H / 2 + 58, 210, 50);
         ctx.strokeStyle = '#dddddd'; ctx.strokeRect(W / 2 - 105, H / 2 - 4, 210, 50); ctx.strokeRect(W / 2 - 105, H / 2 + 58, 210, 50);
         ctx.fillStyle = '#ffffff'; ctx.font = 'bold 17px system-ui'; ctx.fillText('RESUME', W / 2, H / 2 + 27); ctx.fillText('RESTART RUN', W / 2, H / 2 + 89);
-        if (seedUnlocked) {
-          ctx.fillStyle = totalMinerals >= 10 ? '#777777' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 122, 280, 50); ctx.strokeStyle = '#dddddd'; ctx.strokeRect(W / 2 - 140, H / 2 + 122, 280, 50);
-          ctx.fillStyle = '#ffffff'; ctx.fillText('GROW NEW TREE — 10 MINERALS', W / 2, H / 2 + 154);
-        } else { ctx.font = '14px system-ui'; ctx.fillStyle = '#cfcfcf'; ctx.fillText('Reach 2500 m to unlock a new tree seed', W / 2, H / 2 + 140); }
+        ctx.font = '14px system-ui'; ctx.fillStyle = '#cfcfcf'; ctx.fillText(seedUnlocked ? 'Grow the new tree from the start menu' : 'Reach 2500 m to unlock a new tree seed', W / 2, H / 2 + 140);
         ctx.textAlign = 'start';
       }
       if (!started) {
@@ -299,6 +298,11 @@
         ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('START', W / 2, H / 2 + 57); ctx.textAlign = 'start';
+        if (seedUnlocked) {
+          ctx.textAlign = 'center'; ctx.fillStyle = totalMinerals >= 50 ? '#6f6f6f' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 92, 280, 50);
+          ctx.strokeStyle = '#dedede'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 140, H / 2 + 92, 280, 50);
+          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px system-ui'; ctx.fillText('GROW NEW TREE — 50 MINERALS', W / 2, H / 2 + 123); ctx.textAlign = 'start';
+        }
       }
     }
     function frame() { update(); draw(); requestAnimationFrame(frame); }
