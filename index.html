@@ -30,7 +30,7 @@
       for (let i = 0; i < 10; i++) {
         const roll = Math.random();
         const type = roll < .53 ? 'water' : roll < .68 ? 'poison' : 'mineral';
-        items.push({ x: rand(42, W - 42), y: fromY + rand(30, 510), type, r: type === 'water' ? rand(30, 44) : rand(17, 26), taken: false, wobble: rand(0, 6.28), harvestAt: 0, shape: Math.floor(rand(0, 4)), tunnels: [] });
+        items.push({ x: rand(42, W - 42), y: fromY + rand(30, 510), type, r: type === 'mineral' ? rand(7, 11) : rand(30, 44), taken: false, wobble: rand(0, 6.28), harvestAt: 0, shape: Math.floor(rand(0, 4)), tunnels: [] });
       }
       for (let i = 0; i < 20; i++) stones.push({ x: rand(0, W), y: fromY + rand(0, 520), r: rand(14, 40), shade: rand(0, 1) });
       // The first 50 m is clear soil; obstacles appear only deeper underground.
@@ -103,20 +103,21 @@
         if (item.taken) continue;
         if (Math.hypot(root.x - item.x, root.y - item.y) < root.radius + item.r + 4 && performance.now() - item.harvestAt > 220) {
           item.harvestAt = performance.now();
-          if (item.type === 'water') {
+          if (item.type === 'water' || item.type === 'poison') {
             const lastTunnel = item.tunnels[item.tunnels.length - 1];
             if (!lastTunnel || Math.hypot(root.x - lastTunnel.x, root.y - lastTunnel.y) > root.radius * 1.45) {
               item.tunnels.push({ x: root.x, y: root.y });
-              water++; health = Math.min(100, health + 6);
-              for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: '#75d8ec' });
+              if (item.type === 'water') { water++; health = Math.min(100, health + 6); }
+              else health = Math.max(0, health - 12);
+              for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : '#b6e34b' });
             }
+            if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
             continue;
           }
           const finalChunk = item.r <= root.radius * 1.35;
           if (finalChunk) item.taken = true;
           else item.r = Math.max(root.radius, item.r - root.radius);
-          if (item.type === 'poison') { health = Math.max(0, health - 18); }
-          else minerals++;
+          minerals++;
           if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
           for (let i = 0; i < 14; i++) particles.push({ x: item.x, y: item.y, vx: rand(-2.2, 2.2), vy: rand(-2.2, 2.2), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'poison' ? '#b6e34b' : '#ffd267' });
         }
@@ -178,24 +179,21 @@
         const y = worldY(item.y); if (item.taken || y < -30 || y > H + 30) continue;
         const bob = Math.sin(pulse + item.wobble) * 2;
         ctx.save(); ctx.translate(item.x, y + bob);
-        if (item.type === 'water') {
-          ctx.fillStyle = '#74d9ed'; ctx.shadowColor = '#70e8ff'; ctx.shadowBlur = 15;
+        if (item.type === 'water' || item.type === 'poison') {
+          const poisonous = item.type === 'poison';
+          ctx.fillStyle = poisonous ? '#a9d448' : '#74d9ed'; ctx.shadowColor = poisonous ? '#c9ff4d' : '#70e8ff'; ctx.shadowBlur = 15;
           ctx.beginPath();
           if (item.shape === 0) ctx.arc(0, 0, item.r, 0, Math.PI * 2);
           else if (item.shape === 1) ctx.ellipse(0, 0, item.r * 1.3, item.r * .72, item.wobble, 0, Math.PI * 2);
           else if (item.shape === 2) { ctx.moveTo(0, -item.r * 1.25); ctx.bezierCurveTo(item.r, -item.r * .35, item.r * .8, item.r * .75, 0, item.r * 1.1); ctx.bezierCurveTo(-item.r * .8, item.r * .75, -item.r, -item.r * .35, 0, -item.r * 1.25); }
           else { ctx.moveTo(0, -item.r); ctx.lineTo(item.r * .95, 0); ctx.lineTo(0, item.r); ctx.lineTo(-item.r * .95, 0); ctx.closePath(); }
           ctx.fill();
-          ctx.fillStyle = '#d9fbff'; ctx.beginPath(); ctx.arc(-item.r * .25, -item.r * .3, item.r * .19, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = poisonous ? '#e7ff9b' : '#d9fbff'; ctx.beginPath(); ctx.arc(-item.r * .25, -item.r * .3, item.r * .19, 0, Math.PI * 2); ctx.fill();
           if (item.tunnels.length) {
-            ctx.strokeStyle = 'rgba(82, 50, 35, .78)'; ctx.lineWidth = root.radius * 1.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.strokeStyle = poisonous ? 'rgba(61, 84, 22, .82)' : 'rgba(82, 50, 35, .78)'; ctx.lineWidth = root.radius * 1.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             ctx.beginPath(); item.tunnels.forEach((p, i) => i ? ctx.lineTo(p.x - item.x, p.y - item.y) : ctx.moveTo(p.x - item.x, p.y - item.y)); ctx.stroke();
           }
-        } else if (item.type === 'poison') {
-          ctx.fillStyle = '#a9d448'; ctx.shadowColor = '#c9ff4d'; ctx.shadowBlur = 15;
-          ctx.beginPath(); ctx.arc(0, 0, item.r, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = '#e7ff9b'; ctx.beginPath(); ctx.arc(-3, -4, item.r * .28, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = '#496918'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-4, 3); ctx.lineTo(4, -3); ctx.moveTo(-4, -3); ctx.lineTo(4, 3); ctx.stroke();
+          if (poisonous) { ctx.strokeStyle = '#496918'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(5, -4); ctx.moveTo(-5, -4); ctx.lineTo(5, 4); ctx.stroke(); }
         } else {
           ctx.fillStyle = '#f0b54f'; ctx.shadowColor = '#ffd86e'; ctx.shadowBlur = 12;
           ctx.rotate(item.wobble); ctx.fillRect(-item.r, -item.r, item.r * 2, item.r * 2);
