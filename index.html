@@ -278,7 +278,7 @@
       for (const p of particles) { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, worldY(p.y), 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
       ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText(activeTree === 'apple' ? 'APPLE TREE' : 'OAK TREE', 30, 44);
-      ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water bank  ' + totalWater, 30, 72);
+      ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water  ' + totalWater, 30, 72);
       ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + totalMinerals, 140, 72);
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Depth  ' + depth + ' m', 30, 98);
       if (performance.now() < slowUntil) { ctx.fillStyle = '#d9ae70'; ctx.fillText('OIL: SLOWED', 470, 56); }
