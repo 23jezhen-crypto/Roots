@@ -44,9 +44,8 @@
     let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pearTreeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, pearUnlocked = false, slowUntil = 0, boostUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak', lastRunScore = 0, lastGrowthEarned = 0, defenseCampaignWave = 1;
     const upgrades = { oak: { vitality: 0, water: 0, poison: 0 }, apple: { vitality: 0, water: 0, poison: 0 }, pear: { oil: 0, water: 0, poison: 0 } };
     const treeGrowth = { oak: 0, apple: 0, pear: 0 };
-    const DEFENSE_COSTS = [3, 6, 9], MAX_DEFENSE_LEVEL = DEFENSE_COSTS.length;
     const defenseUpgrades = { firepower: 0, turrets: 0, armor: 0 };
-    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, turretControlled: false };
+    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, techPage: 'defense', turretControlled: false };
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
@@ -72,6 +71,7 @@
     function oilHealing() { return 10 + upgrades.pear.oil * TECH_TREES.pear.oil.amount; }
     function oilSpeedMultiplier() { return 1.6 + upgrades.pear.oil * .1; }
     function treeGrowthName(tree = activeTree) { return tree === 'apple' ? 'apples' : tree === 'pear' ? 'pears' : 'acorns'; }
+    function defenseUpgradeCost(level) { return { material: 3 + level * 3, minerals: 2 + level * 2, water: 2 + level * 2 }; }
     function menuTreeAt(x, y) {
       if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) return 'oak';
       const appleCardBottom = H / 2 + (treeLevel >= FULL_GROWTH_STAGE ? 174 : 156);
@@ -145,7 +145,7 @@
     function startTowerDefense() {
       const now = performance.now();
       td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 3 + td.wave; td.nextSpawn = now + 600; td.nextShot = now;
-      td.burstReady = now; td.treeHealth = maxHealth() + defenseUpgrades.armor * 20; td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = false; td.techOpen = false; td.turretControlled = false;
+      td.burstReady = now; td.treeHealth = maxHealth() + defenseUpgrades.armor * 20; td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = false; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false;
       gameOver = false; started = false;
     }
     function endTowerDefense() {
@@ -161,6 +161,10 @@
       if (defenseUpgrades.turrets >= 1) turrets.push({ x: W / 2 - 58, y: 386, placement: 'branch' });
       if (defenseUpgrades.turrets >= 2) turrets.push({ x: W / 2 - 122, y: 480, placement: 'ground' });
       if (defenseUpgrades.turrets >= 3) turrets.push({ x: W / 2 + 126, y: 480, placement: 'ground' });
+      for (let level = 3; level < defenseUpgrades.turrets; level++) {
+        const side = level % 2 ? -1 : 1, row = Math.floor((level - 3) / 2) + 1;
+        turrets.push({ x: clamp(W / 2 + side * (126 + row * 72), 35, W - 35), y: 480, placement: 'ground' });
+      }
       return turrets;
     }
     function fireTreeShot(target, turret = defenseTurrets()[0]) {
@@ -216,14 +220,26 @@
     }
     function handleDefenseClick(x, y) {
       if (td.techOpen) {
+        if (y > 170 && y < 210) {
+          if (x > 220 && x < 440) td.techPage = 'root';
+          else if (x > 460 && x < 680) td.techPage = 'defense';
+          return;
+        }
         if (x > W / 2 - 95 && x < W / 2 + 95 && y > 500 && y < 550) { td.techOpen = false; return; }
-        const keys = ['firepower', 'turrets', 'armor'];
+        const keys = td.techPage === 'root' ? Object.keys(TECH_TREES[activeTree]) : ['firepower', 'turrets', 'armor'];
         const index = Math.floor((x - 115) / 235), key = keys[index];
-        if (key && x < 315 + index * 235 && y > 270 && y < 450 && defenseUpgrades[key] < MAX_DEFENSE_LEVEL) {
-          const level = defenseUpgrades[key], materialCost = DEFENSE_COSTS[level], mineralCost = UPGRADE_MINERAL_COSTS[level], waterCost = UPGRADE_WATER_COSTS[level];
+        const upgradeSet = td.techPage === 'root' ? upgrades[activeTree] : defenseUpgrades;
+        const capped = td.techPage === 'root' && upgradeSet[key] >= MAX_UPGRADE_LEVEL;
+        if (key && x < 315 + index * 235 && y > 270 && y < 450 && !capped) {
+          const level = upgradeSet[key];
+          const defenseCost = defenseUpgradeCost(level);
+          const materialCost = td.techPage === 'root' ? TREE_MATERIAL_COSTS[level] : defenseCost.material;
+          const mineralCost = td.techPage === 'root' ? UPGRADE_MINERAL_COSTS[level] : defenseCost.minerals;
+          const waterCost = td.techPage === 'root' ? UPGRADE_WATER_COSTS[level] : defenseCost.water;
           if (treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost) {
-            treeGrowth[activeTree] -= materialCost; totalMinerals -= mineralCost; totalWater -= waterCost; defenseUpgrades[key]++;
+            treeGrowth[activeTree] -= materialCost; totalMinerals -= mineralCost; totalWater -= waterCost; upgradeSet[key]++;
             if (key === 'armor') td.treeHealth += 20;
+            if (td.techPage === 'root' && key === 'vitality') td.treeHealth += TECH_TREES[activeTree].vitality.amount;
           }
         }
         return;
@@ -267,30 +283,6 @@
         if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 - 4 && y < H / 2 + 46) { paused = false; }
         else if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 58 && y < H / 2 + 108) { resetWorld(); started = true; }
         canvas.focus(); return;
-      }
-      if (!started && showUpgradeMenu) {
-        if (x > W / 2 - 95 && x < W / 2 + 95 && y > 500 && y < 550) { showUpgradeMenu = false; canvas.focus(); return; }
-        if (y > 170 && y < 208) {
-          if (x > 130 && x < 330) selectedUpgradeTree = 'oak';
-          else if (x > 350 && x < 550 && treeLevel >= FULL_GROWTH_STAGE) selectedUpgradeTree = 'apple';
-          else if (x > 570 && x < 770 && pearTreeLevel >= PEAR_FULL_GROWTH_STAGE) selectedUpgradeTree = 'pear';
-          canvas.focus(); return;
-        }
-        const upgrade = upgradeAt(x, y);
-        const treeUpgrades = upgrades[selectedUpgradeTree];
-        if (upgrade && treeUpgrades[upgrade] < MAX_UPGRADE_LEVEL) {
-          const materialCost = TREE_MATERIAL_COSTS[treeUpgrades[upgrade]];
-          const mineralCost = UPGRADE_MINERAL_COSTS[treeUpgrades[upgrade]];
-          const waterCost = UPGRADE_WATER_COSTS[treeUpgrades[upgrade]];
-          if (treeGrowth[selectedUpgradeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost) {
-            treeGrowth[selectedUpgradeTree] -= materialCost; totalMinerals -= mineralCost; totalWater -= waterCost; treeUpgrades[upgrade]++;
-            if (upgrade === 'vitality' && selectedUpgradeTree === activeTree) health = Math.min(maxHealth(), health + TECH_TREES[selectedUpgradeTree].vitality.amount);
-          }
-        }
-        canvas.focus(); return;
-      }
-      if (!started && x > W / 2 - 125 && x < W / 2 + 125 && y > H / 2 + 260 && y < H / 2 + 310) {
-        showUpgradeMenu = true; canvas.focus(); return;
       }
       const appleTreeReady = treeLevel >= FULL_GROWTH_STAGE;
       if (!started && appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 172) {
@@ -493,24 +485,29 @@
     }
 
     function drawDefenseTech() {
-      const branches = [
+      const defenseBranches = [
         { key: 'firepower', title: 'ACORN POWER', detail: '+5 turret damage / level', color: '#d68b52' },
         { key: 'turrets', title: 'TURRET GARDENS', detail: '+1 branch or ground turret / level', color: '#7aaec4' },
         { key: 'armor', title: 'BARK ARMOR', detail: '+20 tree defense health / level', color: '#91a766' }
       ];
+      const rootBranches = Object.entries(TECH_TREES[activeTree]).map(([key, branch]) => ({ key, ...branch }));
+      const rootPage = td.techPage === 'root', branches = rootPage ? rootBranches : defenseBranches, upgradeSet = rootPage ? upgrades[activeTree] : defenseUpgrades;
       ctx.fillStyle = 'rgba(8, 18, 15, .97)'; ctx.fillRect(70, 90, 760, 480); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(70, 90, 760, 480);
-      ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText('TREE DEFENSE TECH', W / 2, 132);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText(rootPage ? 'ROOT TECH' : 'TREE DEFENSE TECH', W / 2, 132);
       ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Uses ' + treeGrowthName() + ', minerals, and water', W / 2, 158);
+      [[220, 'ROOT UPGRADES', 'root'], [460, 'DEFENSE UPGRADES', 'defense']].forEach(([x, label, page]) => { ctx.fillStyle = td.techPage === page ? '#4b7a3d' : '#37473a'; ctx.fillRect(x, 170, 220, 40); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(x, 170, 220, 40); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 13px system-ui'; ctx.fillText(label, x + 110, 195); });
       branches.forEach((branch, index) => {
-        const bx = 115 + index * 235, by = 270, level = defenseUpgrades[branch.key];
-        const materialCost = level < MAX_DEFENSE_LEVEL ? DEFENSE_COSTS[level] : null, mineralCost = level < MAX_DEFENSE_LEVEL ? UPGRADE_MINERAL_COSTS[level] : null, waterCost = level < MAX_DEFENSE_LEVEL ? UPGRADE_WATER_COSTS[level] : null;
+        const bx = 115 + index * 235, by = 270, level = upgradeSet[branch.key], capped = rootPage && level >= MAX_UPGRADE_LEVEL;
+        const defenseCost = defenseUpgradeCost(level);
+        const materialCost = rootPage ? TREE_MATERIAL_COSTS[level] : defenseCost.material, mineralCost = rootPage ? UPGRADE_MINERAL_COSTS[level] : defenseCost.minerals, waterCost = rootPage ? UPGRADE_WATER_COSTS[level] : defenseCost.water;
         ctx.fillStyle = '#1c3227'; ctx.fillRect(bx, by, 200, 180); ctx.strokeStyle = branch.color; ctx.lineWidth = 2; ctx.strokeRect(bx, by, 200, 180);
         ctx.fillStyle = branch.color; ctx.font = 'bold 16px system-ui'; ctx.fillText(branch.title, bx + 100, by + 31);
         ctx.fillStyle = '#e0ead7'; ctx.font = '13px system-ui'; ctx.fillText(branch.detail, bx + 100, by + 58);
-        for (let step = 0; step < MAX_DEFENSE_LEVEL; step++) { ctx.fillStyle = step < level ? branch.color : '#465648'; ctx.beginPath(); ctx.arc(bx + 70 + step * 30, by + 88, 9, 0, Math.PI * 2); ctx.fill(); }
+        if (rootPage) for (let step = 0; step < MAX_UPGRADE_LEVEL; step++) { ctx.fillStyle = step < level ? branch.color : '#465648'; ctx.beginPath(); ctx.arc(bx + 70 + step * 30, by + 88, 9, 0, Math.PI * 2); ctx.fill(); }
+        else { ctx.fillStyle = branch.color; ctx.font = 'bold 20px system-ui'; ctx.fillText('LEVEL ' + level, bx + 100, by + 96); }
         const affordable = treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost;
-        ctx.fillStyle = level >= MAX_DEFENSE_LEVEL ? '#536b55' : affordable ? '#4b7a3d' : '#3f4a40'; ctx.fillRect(bx + 18, by + 112, 164, 45); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(bx + 18, by + 112, 164, 45);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(level >= MAX_DEFENSE_LEVEL ? 'MAXED' : materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W', bx + 100, by + 140);
+        ctx.fillStyle = capped ? '#536b55' : affordable ? '#4b7a3d' : '#3f4a40'; ctx.fillRect(bx + 18, by + 112, 164, 45); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(bx + 18, by + 112, 164, 45);
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(capped ? 'MAXED' : materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W', bx + 100, by + 140);
       });
       ctx.fillStyle = '#555555'; ctx.fillRect(W / 2 - 95, 500, 190, 50); ctx.strokeStyle = '#d0d0d0'; ctx.strokeRect(W / 2 - 95, 500, 190, 50); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('BACK TO WAVES', W / 2, 531); ctx.textAlign = 'start';
     }
@@ -734,14 +731,8 @@
         ctx.font = '13px system-ui'; ctx.fillStyle = '#f0df9a';
         ctx.fillText(pearTreeLevel >= PEAR_FULL_GROWTH_STAGE ? 'Oil heals and boosts speed' : 'Pear Tree stage ' + pearTreeLevel + ' of ' + PEAR_FULL_GROWTH_STAGE, W / 2, H / 2 + 230); ctx.textAlign = 'start';
       }
-      if (!started && !showUpgradeMenu) {
-        ctx.fillStyle = '#465f3e'; ctx.fillRect(W / 2 - 125, H / 2 + 260, 250, 50);
-        ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 125, H / 2 + 260, 250, 50);
-        ctx.textAlign = 'center'; ctx.fillStyle = '#fff8df'; ctx.font = 'bold 16px system-ui'; ctx.fillText('TREE UPGRADES', W / 2, H / 2 + 291); ctx.textAlign = 'start';
-      }
-      if (!started && showUpgradeMenu) drawUpgradeTree();
       const statsTree = hoveredTree || pinnedTreeStats;
-      if (!started && !showUpgradeMenu && statsTree) drawTreeStats(statsTree);
+      if (!started && statsTree) drawTreeStats(statsTree);
     }
     function frame() { update(); draw(); requestAnimationFrame(frame); }
     frame();
