@@ -29,9 +29,15 @@
     function worldY(y) { return y - cameraY; }
     function addChunk(fromY) {
       for (let i = 0; i < 6; i++) {
-        const roll = Math.random();
-        const type = roll < .43 ? 'water' : roll < .55 ? 'poison' : roll < .67 ? 'oil' : 'mineral';
-        items.push({ x: rand(42, W - 42), y: fromY + rand(30, 510), type, r: type === 'mineral' ? rand(7, 11) : rand(30, 44), taken: false, wobble: rand(0, 6.28), harvestAt: 0, shape: Math.floor(rand(0, 4)), tunnels: [] });
+        let resource;
+        for (let attempt = 0; attempt < 24; attempt++) {
+          const roll = Math.random();
+          const type = roll < .43 ? 'water' : roll < .55 ? 'poison' : roll < .67 ? 'oil' : 'mineral';
+          const candidate = { x: rand(42, W - 42), y: fromY + rand(30, 510), type, r: type === 'mineral' ? rand(7, 11) : rand(30, 44), taken: false, wobble: rand(0, 6.28), harvestAt: 0, shape: Math.floor(rand(0, 4)), tunnels: [] };
+          const overlapsResource = items.some(item => Math.hypot(candidate.x - item.x, candidate.y - item.y) < candidate.r + item.r + 20);
+          if (!overlapsResource) { resource = candidate; break; }
+        }
+        if (resource) items.push(resource);
       }
       for (let i = 0; i < 20; i++) stones.push({ x: rand(0, W), y: fromY + rand(0, 520), r: rand(14, 40), shade: rand(0, 1) });
       // The first 50 m is clear soil; obstacles appear only deeper underground.
@@ -153,11 +159,11 @@
             const lastTunnel = item.tunnels[item.tunnels.length - 1];
             if (!lastTunnel || Math.hypot(root.x - lastTunnel.x, root.y - lastTunnel.y) > root.radius * 1.45) {
               item.tunnels.push({ x: root.x, y: root.y });
-              if (item.type === 'water') { water++; totalWater++; health = Math.min(100, health + 6); }
+              if (item.type === 'water') { water++; totalWater++; health = Math.min(100, health + 12); }
               else {
                 const poisonDamage = activeTree === 'apple' ? 6 : 12;
                 health = Math.max(0, health - (item.type === 'oil' ? 5 : poisonDamage));
-                if (item.type === 'oil') slowUntil = performance.now() + 900;
+                if (item.type === 'oil') slowUntil = performance.now() + 2500;
               }
               for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'oil' ? '#36312b' : '#b6e34b' });
             }
