@@ -20,8 +20,8 @@
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
-    const root = { x: W / 2, y: -7, radius: 12, speed: 4.2, trail: [] };
-    let cameraY = -150, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false;
+    const root = { x: W / 2, y: -210, radius: 12, speed: 4.2, trail: [] };
+    let cameraY = -300, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false;
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
@@ -47,14 +47,27 @@
         }
       }
     }
-    for (let y = -150; y < 2600; y += 500) addChunk(y);
+    function resetWorld() {
+      cameraY = -300; depth = 0; water = 0; minerals = 0; health = 100;
+      root.x = W / 2; root.y = -210; root.trail = [];
+      items = []; stones = []; obstacles = []; particles = [];
+      for (let y = 30; y < 2600; y += 500) addChunk(y);
+    }
+    resetWorld();
 
     canvas.addEventListener('pointermove', e => {
       const r = canvas.getBoundingClientRect();
       mouse.x = (e.clientX - r.left) * W / r.width;
       mouse.y = (e.clientY - r.top) * H / r.height;
     });
-    canvas.addEventListener('pointerdown', () => { if (gameOver) { health = 100; gameOver = false; } canvas.focus(); });
+    canvas.addEventListener('pointerdown', e => {
+      const r = canvas.getBoundingClientRect();
+      const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+      if (!started && x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) {
+        gameOver = false; started = true;
+      }
+      canvas.focus();
+    });
 
     function hitsObstacle(x, y) {
       return obstacles.some(o => {
@@ -65,7 +78,7 @@
     }
 
     function update() {
-      if (gameOver) return;
+      if (!started) return;
       pulse += .035;
       // The root always grows down; mouse controls its underground path.
       const targetX = mouse.x;
@@ -83,7 +96,7 @@
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
       depth = Math.max(depth, Math.floor(Math.max(0, root.y)));
       health = Math.max(0, health - .04 - Math.max(0, root.y - oldY) * .028);
-      if (health <= 0) gameOver = true;
+      if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
 
       for (const item of items) {
@@ -93,7 +106,7 @@
           if (item.type === 'water') { water++; health = Math.min(100, health + 15); }
           else if (item.type === 'poison') { health = Math.max(0, health - 30); }
           else minerals++;
-          if (health <= 0) gameOver = true;
+          if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
           for (let i = 0; i < 14; i++) particles.push({ x: item.x, y: item.y, vx: rand(-2.2, 2.2), vy: rand(-2.2, 2.2), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'poison' ? '#b6e34b' : '#ffd267' });
         }
       }
@@ -188,10 +201,14 @@
       ctx.fillStyle = health > 35 ? '#73c96b' : '#de6552'; ctx.fillRect(305, 44, 145 * health / 100, 16);
       ctx.strokeStyle = '#f7e9c8'; ctx.lineWidth = 2; ctx.strokeRect(305, 44, 145, 16);
       ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '14px system-ui'; ctx.fillText('Follow the mouse downward', W - 215, 32);
-      if (gameOver) {
+      if (!started) {
         ctx.fillStyle = 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
-        ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia'; ctx.fillText('The root has withered', W / 2, H / 2 - 12);
-        ctx.font = '18px system-ui'; ctx.fillText('Click to continue your descent', W / 2, H / 2 + 28); ctx.textAlign = 'start';
+        ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia';
+        ctx.fillText(gameOver ? 'The root has withered' : 'ROOTBOUND', W / 2, H / 2 - 12);
+        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Return to the tree crown and try again' : 'Grow from the crown to find water below', W / 2, H / 2 + 14);
+        ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
+        ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('START', W / 2, H / 2 + 57); ctx.textAlign = 'start';
       }
     }
     function frame() { update(); draw(); requestAnimationFrame(frame); }
