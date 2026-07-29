@@ -8,7 +8,7 @@
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; background: #1c1c1c; color: #f5ecd3; font-family: Georgia, serif; }
     body { display: grid; place-items: center; min-height: 100vh; overflow: hidden; }
-    #game { width: min(100vw, 900px); height: min(100vh, 680px); display: block; cursor: crosshair; background: #5f3825; box-shadow: 0 18px 60px #080808; filter: grayscale(1); }
+    #game { width: min(100vw, 900px); height: min(100vh, 680px); display: block; cursor: crosshair; background: #4d4d4d; box-shadow: 0 18px 60px #080808; }
     .hint { position: fixed; bottom: 14px; font: 13px system-ui, sans-serif; color: #d9cfb5; opacity: .78; pointer-events: none; }
   </style>
 </head>
@@ -42,7 +42,7 @@
             const left = Math.random() < .5;
             obstacles.push({ type: 'wall', x: left ? 0 : rand(W * .58, W * .78), y, w: left ? rand(W * .22, W * .4) : rand(W * .16, W * .28), h: rand(65, 140) });
           } else {
-            obstacles.push({ type: 'tunnel', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(100, 190), opening: 22, orientation: 'sideways' });
+            obstacles.push({ type: 'tunnel', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(130, 210), opening: 16, angle: (Math.random() < .5 ? -1 : 1) * rand(.22, .55) });
           }
         }
       }
@@ -72,9 +72,12 @@
     function hitsObstacle(x, y) {
       return obstacles.some(o => {
         if (o.type === 'tunnel') {
-          const insidePipe = x + root.radius > o.x - o.length / 2 && x - root.radius < o.x + o.length / 2 && y + root.radius > o.y - o.r && y - root.radius < o.y + o.r;
-          // Sideways pipes are solid except for the vertical shaft in their center.
-          return insidePipe && Math.abs(x - o.x) > o.opening;
+          const cos = Math.cos(o.angle), sin = Math.sin(o.angle);
+          const along = (x - o.x) * cos + (y - o.y) * sin;
+          const across = -(x - o.x) * sin + (y - o.y) * cos;
+          const insidePipe = Math.abs(along) < o.length / 2 + root.radius && Math.abs(across) < o.r + root.radius;
+          // The clear channel follows the pipe's long, slanted axis.
+          return insidePipe && Math.abs(across) > o.opening + root.radius;
         }
         if (o.type === 'wall') return x + root.radius > o.x && x - root.radius < o.x + o.w && y + root.radius > o.y && y - root.radius < o.y + o.h;
         const nearX = Math.max(o.x - o.length / 2, Math.min(x, o.x + o.length / 2));
@@ -100,7 +103,7 @@
       if (!hitsObstacle(root.x, nextY)) root.y = nextY;
       root.trail.push({ x: root.x, y: root.y });
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
-      depth = Math.max(depth, Math.floor(Math.max(0, root.y)));
+      depth = Math.max(depth, Math.floor(Math.max(0, root.y) * .35));
       health = Math.max(0, health - .04 - Math.max(0, root.y - oldY) * .028);
       if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
@@ -138,31 +141,31 @@
     function draw() {
       const surfaceY = worldY(0);
       const sky = ctx.createLinearGradient(0, 0, 0, Math.min(H, surfaceY));
-      sky.addColorStop(0, '#6bb7da'); sky.addColorStop(1, '#c8ebd1');
+      sky.addColorStop(0, '#9a9a9a'); sky.addColorStop(1, '#d0d0d0');
       ctx.fillStyle = sky; ctx.fillRect(0, 0, W, Math.max(0, surfaceY));
       if (surfaceY > 0) {
-        ctx.fillStyle = '#466e36'; ctx.fillRect(0, surfaceY - 10, W, 12);
-        ctx.fillStyle = '#2f4d2b';
+        ctx.fillStyle = '#666666'; ctx.fillRect(0, surfaceY - 10, W, 12);
+        ctx.fillStyle = '#4b4b4b';
         for (let x = 15; x < W; x += 42) ctx.fillRect(x, surfaceY - rand(11, 20), 4, 12);
         // Home tree: the root begins at the base of this trunk.
         const treeX = W / 2;
-        ctx.strokeStyle = '#5d3825'; ctx.lineWidth = 30; ctx.lineCap = 'round';
+        ctx.strokeStyle = '#585858'; ctx.lineWidth = 30; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(treeX, surfaceY); ctx.lineTo(treeX - 5, surfaceY - 118); ctx.stroke();
-        ctx.strokeStyle = '#75472c'; ctx.lineWidth = 9;
+        ctx.strokeStyle = '#787878'; ctx.lineWidth = 9;
         ctx.beginPath(); ctx.moveTo(treeX - 4, surfaceY - 77); ctx.lineTo(treeX - 65, surfaceY - 126); ctx.moveTo(treeX - 4, surfaceY - 84); ctx.lineTo(treeX + 59, surfaceY - 138); ctx.stroke();
-        ctx.fillStyle = '#2f683b';
+        ctx.fillStyle = '#4f4f4f';
         [[-52,-145,49], [6,-162,57], [57,-142,45], [-10,-206,49]].forEach(([ox, oy, r]) => { ctx.beginPath(); ctx.arc(treeX + ox, surfaceY + oy, r, 0, Math.PI * 2); ctx.fill(); });
-        ctx.fillStyle = '#4c9050';
+        ctx.fillStyle = '#727272';
         [[-33,-167,30], [24,-190,35], [66,-154,25]].forEach(([ox, oy, r]) => { ctx.beginPath(); ctx.arc(treeX + ox, surfaceY + oy, r, 0, Math.PI * 2); ctx.fill(); });
       }
       const soil = ctx.createLinearGradient(0, Math.max(0, surfaceY), 0, H);
-      soil.addColorStop(0, '#70402a'); soil.addColorStop(1, '#2e1b19');
+      soil.addColorStop(0, '#666666'); soil.addColorStop(1, '#262626');
       ctx.fillStyle = soil; ctx.fillRect(0, Math.max(0, surfaceY), W, H);
       ctx.fillStyle = 'rgba(20, 9, 8, .14)';
       for (let y = Math.max(surfaceY, -((cameraY * .2) % 55)); y < H; y += 55) ctx.fillRect(0, y, W, 2);
       for (const s of stones) {
         const y = worldY(s.y); if (y < -60 || y > H + 60) continue;
-        ctx.fillStyle = s.shade > .5 ? '#432b28' : '#57342a';
+        ctx.fillStyle = s.shade > .5 ? '#3d3d3d' : '#505050';
         ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = 'rgba(20,10,10,.25)'; ctx.stroke();
       }
@@ -173,12 +176,14 @@
           ctx.fillStyle = '#5e5655'; ctx.fillRect(o.x + 5, y + 5, o.w - 10, 7);
           ctx.strokeStyle = '#171316'; ctx.lineWidth = 3; ctx.strokeRect(o.x, y, o.w, o.h);
         } else {
-          ctx.save(); ctx.translate(o.x, y);
-          ctx.strokeStyle = '#697174'; ctx.lineWidth = o.r * 2; ctx.lineCap = 'round';
-          ctx.beginPath(); ctx.moveTo(-o.length / 2, 0); ctx.lineTo(-o.opening, 0); ctx.moveTo(o.opening, 0); ctx.lineTo(o.length / 2, 0); ctx.stroke();
-          ctx.strokeStyle = '#a6b3b1'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-o.length / 2 + 8, -o.r * .35); ctx.lineTo(-o.opening, -o.r * .35); ctx.moveTo(o.opening, -o.r * .35); ctx.lineTo(o.length / 2 - 8, -o.r * .35); ctx.stroke();
-          ctx.strokeStyle = '#b3c0bd'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-o.opening, -o.r); ctx.lineTo(-o.opening, o.r); ctx.moveTo(o.opening, -o.r); ctx.lineTo(o.opening, o.r); ctx.stroke();
-          ctx.fillStyle = '#4a5051'; for (let x = -o.length / 2 + 20; x < -o.opening - 10; x += 45) ctx.fillRect(x, -o.r - 5, 7, o.r * 2 + 10); for (let x = o.opening + 10; x < o.length / 2; x += 45) ctx.fillRect(x, -o.r - 5, 7, o.r * 2 + 10);
+          const wallWidth = o.r - o.opening;
+          const railOffset = o.opening + wallWidth / 2;
+          ctx.save(); ctx.translate(o.x, y); ctx.rotate(o.angle);
+          ctx.strokeStyle = '#6d6d6d'; ctx.lineWidth = wallWidth; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(-o.length / 2, -railOffset); ctx.lineTo(o.length / 2, -railOffset); ctx.moveTo(-o.length / 2, railOffset); ctx.lineTo(o.length / 2, railOffset); ctx.stroke();
+          ctx.strokeStyle = '#b7b7b7'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-o.length / 2 + 8, -railOffset - wallWidth * .22); ctx.lineTo(o.length / 2 - 8, -railOffset - wallWidth * .22); ctx.moveTo(-o.length / 2 + 8, railOffset - wallWidth * .22); ctx.lineTo(o.length / 2 - 8, railOffset - wallWidth * .22); ctx.stroke();
+          ctx.strokeStyle = '#cecece'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-o.length / 2, -o.opening); ctx.lineTo(o.length / 2, -o.opening); ctx.moveTo(-o.length / 2, o.opening); ctx.lineTo(o.length / 2, o.opening); ctx.stroke();
+          ctx.restore();
           ctx.restore();
         }
       }
@@ -212,14 +217,14 @@
       if (root.trail.length > 1) {
         ctx.lineCap = 'round'; ctx.lineJoin = 'round';
         ctx.beginPath(); root.trail.forEach((p, i) => i ? ctx.lineTo(p.x, worldY(p.y)) : ctx.moveTo(p.x, worldY(p.y)));
-        ctx.strokeStyle = '#e8d0a0'; ctx.lineWidth = 9; ctx.stroke();
-        ctx.strokeStyle = '#9d6b45'; ctx.lineWidth = 3; ctx.stroke();
+        ctx.strokeStyle = '#d6d6d6'; ctx.lineWidth = 9; ctx.stroke();
+        ctx.strokeStyle = '#797979'; ctx.lineWidth = 3; ctx.stroke();
       }
       const ry = worldY(root.y);
       ctx.save(); ctx.translate(root.x, ry); ctx.rotate(root.angle);
-      ctx.fillStyle = '#f0d6a1'; ctx.shadowColor = '#ffc96a'; ctx.shadowBlur = 16;
+      ctx.fillStyle = '#d6d6d6'; ctx.shadowColor = '#eeeeee'; ctx.shadowBlur = 16;
       ctx.beginPath(); ctx.moveTo(-7, -7); ctx.quadraticCurveTo(-11, 0, -7, 7); ctx.lineTo(5, 4); ctx.lineTo(15, 0); ctx.lineTo(5, -4); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#593928'; ctx.beginPath(); ctx.arc(-2, -2, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      ctx.fillStyle = '#393939'; ctx.beginPath(); ctx.arc(-2, -2, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       for (const p of particles) { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, worldY(p.y), 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
       ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText('ROOTBOUND', 30, 44);
