@@ -72,14 +72,16 @@
       const dx = targetX - root.x, dy = targetY - root.y;
       const d = Math.hypot(dx, dy) || 1;
       const oldX = root.x, oldY = root.y;
-      root.x += dx / d * Math.min(root.speed, d);
-      root.y += dy / d * Math.min(root.speed, d);
-      root.x = Math.max(root.radius, Math.min(W - root.radius, root.x));
-      if (hitsObstacle(root.x, root.y)) { root.x = oldX; root.y = oldY; }
+      const step = Math.min(root.speed, d);
+      // Resolve each axis separately so a wall stops digging downward, but never traps sideways movement.
+      const nextX = Math.max(root.radius, Math.min(W - root.radius, oldX + dx / d * step));
+      if (!hitsObstacle(nextX, oldY)) root.x = nextX;
+      const nextY = oldY + dy / d * step;
+      if (!hitsObstacle(root.x, nextY)) root.y = nextY;
       root.trail.push({ x: root.x, y: root.y });
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
       depth = Math.max(depth, Math.floor(Math.max(0, root.y)));
-      health = Math.max(0, health - .008 - Math.max(0, root.y - oldY) * .011);
+      health = Math.max(0, health - .018 - Math.max(0, root.y - oldY) * .022);
       if (health <= 0) gameOver = true;
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
 
