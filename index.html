@@ -21,7 +21,8 @@
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
-    let cameraY = -220, depth = 0, water = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, slowUntil = 0;
+    const SAPLING_COST = 40, GROW_STAGE_COST = 10, FULL_GROWTH_STAGE = 4;
+    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, slowUntil = 0, activeTree = 'oak';
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
@@ -87,11 +88,16 @@
         else if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 58 && y < H / 2 + 108) { resetWorld(); started = true; }
         canvas.focus(); return;
       }
-      if (!started && seedUnlocked && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 142 && totalMinerals >= 50) {
-        totalMinerals -= 50; treeLevel++; canvas.focus(); return;
+      const appleTreeReady = treeLevel >= FULL_GROWTH_STAGE;
+      if (!started && appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 172) {
+        activeTree = 'apple'; gameOver = false; started = true; canvas.focus(); return;
+      }
+      const growthCost = treeLevel === 0 ? SAPLING_COST : GROW_STAGE_COST;
+      if (!started && seedUnlocked && !appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 142 && totalMinerals >= growthCost) {
+        totalMinerals -= growthCost; treeLevel++; canvas.focus(); return;
       }
       if (!started && x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) {
-        gameOver = false; started = true;
+        activeTree = 'oak'; gameOver = false; started = true;
       }
       canvas.focus();
     });
@@ -147,8 +153,12 @@
             const lastTunnel = item.tunnels[item.tunnels.length - 1];
             if (!lastTunnel || Math.hypot(root.x - lastTunnel.x, root.y - lastTunnel.y) > root.radius * 1.45) {
               item.tunnels.push({ x: root.x, y: root.y });
-              if (item.type === 'water') { water++; health = Math.min(100, health + 6); }
-              else { health = Math.max(0, health - (item.type === 'oil' ? 5 : 12)); if (item.type === 'oil') slowUntil = performance.now() + 900; }
+              if (item.type === 'water') { water++; totalWater++; health = Math.min(100, health + 6); }
+              else {
+                const poisonDamage = activeTree === 'apple' ? 6 : 12;
+                health = Math.max(0, health - (item.type === 'oil' ? 5 : poisonDamage));
+                if (item.type === 'oil') slowUntil = performance.now() + 900;
+              }
               for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'oil' ? '#36312b' : '#b6e34b' });
             }
             if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
@@ -189,11 +199,12 @@
         ctx.fillStyle = '#727272';
         [[-33,-167,30], [24,-190,35], [66,-154,25]].forEach(([ox, oy, r]) => { ctx.beginPath(); ctx.arc(treeX + ox, surfaceY + oy, r, 0, Math.PI * 2); ctx.fill(); });
         if (seedUnlocked) {
-          const seedX = treeX + 125, seedHeight = treeLevel * 24;
+          const seedX = treeX + 125, seedHeight = treeLevel * 30;
           if (!treeLevel) { ctx.fillStyle = '#bdbdbd'; ctx.beginPath(); ctx.arc(seedX, surfaceY - 10, 9, 0, Math.PI * 2); ctx.fill(); }
           else {
-            ctx.strokeStyle = '#8b8b8b'; ctx.lineWidth = 7 + treeLevel; ctx.beginPath(); ctx.moveTo(seedX, surfaceY); ctx.lineTo(seedX, surfaceY - seedHeight); ctx.stroke();
-            ctx.fillStyle = '#a9a9a9'; ctx.beginPath(); ctx.arc(seedX - 13, surfaceY - seedHeight - 8, 15 + treeLevel * 2, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(seedX + 13, surfaceY - seedHeight - 4, 14 + treeLevel * 2, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = treeLevel >= FULL_GROWTH_STAGE ? '#754c28' : '#8b8b8b'; ctx.lineWidth = 7 + treeLevel; ctx.beginPath(); ctx.moveTo(seedX, surfaceY); ctx.lineTo(seedX, surfaceY - seedHeight); ctx.stroke();
+            ctx.fillStyle = treeLevel >= FULL_GROWTH_STAGE ? '#70a843' : '#a9a9a9'; ctx.beginPath(); ctx.arc(seedX - 13, surfaceY - seedHeight - 8, 15 + treeLevel * 2, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(seedX + 13, surfaceY - seedHeight - 4, 14 + treeLevel * 2, 0, Math.PI * 2); ctx.fill();
+            if (treeLevel >= FULL_GROWTH_STAGE) { ctx.fillStyle = '#d85044'; [[-12,-13], [12,-7], [2,8]].forEach(([ox, oy]) => { ctx.beginPath(); ctx.arc(seedX + ox, surfaceY - seedHeight + oy, 5, 0, Math.PI * 2); ctx.fill(); }); }
           }
         }
       }
@@ -266,8 +277,8 @@
       ctx.fillStyle = '#393939'; ctx.beginPath(); ctx.arc(-2, -2, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       for (const p of particles) { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, worldY(p.y), 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
-      ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText('ROOTBOUND', 30, 44);
-      ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water  ' + water, 30, 72);
+      ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText(activeTree === 'apple' ? 'APPLE TREE' : 'OAK TREE', 30, 44);
+      ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water bank  ' + totalWater, 30, 72);
       ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + totalMinerals, 140, 72);
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Depth  ' + depth + ' m', 30, 98);
       if (performance.now() < slowUntil) { ctx.fillStyle = '#d9ae70'; ctx.fillText('OIL: SLOWED', 470, 56); }
@@ -297,12 +308,29 @@
         ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Return to the tree base and try again' : 'Grow from the tree into the soil below', W / 2, H / 2 + 14);
         ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('START', W / 2, H / 2 + 57); ctx.textAlign = 'start';
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('PLAY OAK TREE', W / 2, H / 2 + 57); ctx.textAlign = 'start';
         if (seedUnlocked) {
           ctx.textAlign = 'center'; ctx.fillStyle = totalMinerals >= 50 ? '#6f6f6f' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 92, 280, 50);
           ctx.strokeStyle = '#dedede'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 140, H / 2 + 92, 280, 50);
           ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px system-ui'; ctx.fillText('GROW NEW TREE — 50 MINERALS', W / 2, H / 2 + 123); ctx.textAlign = 'start';
         }
+      }
+      if (!started && seedUnlocked) {
+        const appleTreeReady = treeLevel >= FULL_GROWTH_STAGE;
+        const growthCost = treeLevel === 0 ? SAPLING_COST : GROW_STAGE_COST;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = appleTreeReady || totalMinerals >= growthCost ? '#6f6f6f' : '#3f3f3f';
+        ctx.fillRect(W / 2 - 142, H / 2 + 90, 284, appleTreeReady ? 84 : 66);
+        ctx.strokeStyle = '#dedede'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 142, H / 2 + 90, 284, appleTreeReady ? 84 : 66);
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 15px system-ui';
+        if (appleTreeReady) {
+          ctx.fillText('CLICK APPLE TREE TO PLAY', W / 2, H / 2 + 122);
+          ctx.font = '13px system-ui'; ctx.fillStyle = '#d9f0bc'; ctx.fillText('Better poison resistance', W / 2, H / 2 + 150);
+        } else {
+          ctx.fillText((treeLevel === 0 ? 'FEED SEED TO SAPLING' : 'GROW APPLE TREE') + ' — ' + growthCost + ' MINERALS', W / 2, H / 2 + 120);
+          ctx.font = '13px system-ui'; ctx.fillStyle = '#d9f0bc'; ctx.fillText('Apple Tree stage ' + treeLevel + ' of ' + FULL_GROWTH_STAGE, W / 2, H / 2 + 148);
+        }
+        ctx.textAlign = 'start';
       }
     }
     function frame() { update(); draw(); requestAnimationFrame(frame); }
