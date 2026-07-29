@@ -21,15 +21,15 @@
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, trail: [] };
-    let cameraY = -220, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false;
+    let cameraY = -220, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false, slowUntil = 0;
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
     function worldY(y) { return y - cameraY; }
     function addChunk(fromY) {
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 6; i++) {
         const roll = Math.random();
-        const type = roll < .53 ? 'water' : roll < .68 ? 'poison' : 'mineral';
+        const type = roll < .43 ? 'water' : roll < .55 ? 'poison' : roll < .67 ? 'oil' : 'mineral';
         items.push({ x: rand(42, W - 42), y: fromY + rand(30, 510), type, r: type === 'mineral' ? rand(7, 11) : rand(30, 44), taken: false, wobble: rand(0, 6.28), harvestAt: 0, shape: Math.floor(rand(0, 4)), tunnels: [] });
       }
       for (let i = 0; i < 20; i++) stones.push({ x: rand(0, W), y: fromY + rand(0, 520), r: rand(14, 40), shade: rand(0, 1) });
@@ -42,13 +42,13 @@
             const left = Math.random() < .5;
             obstacles.push({ type: 'wall', x: left ? 0 : rand(W * .58, W * .78), y, w: left ? rand(W * .22, W * .4) : rand(W * .16, W * .28), h: rand(65, 140) });
           } else {
-            obstacles.push({ type: 'tube', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(100, 190) });
+            obstacles.push({ type: 'tunnel', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(100, 190) });
           }
         }
       }
     }
     function resetWorld() {
-      cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100;
+      cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100; slowUntil = 0;
       root.x = W / 2; root.y = -7; root.trail = [];
       items = []; stones = []; obstacles = []; particles = [];
       for (let y = 30; y < 2600; y += 500) addChunk(y);
@@ -71,6 +71,7 @@
 
     function hitsObstacle(x, y) {
       return obstacles.some(o => {
+        if (o.type === 'tunnel') return false;
         if (o.type === 'wall') return x + root.radius > o.x && x - root.radius < o.x + o.w && y + root.radius > o.y && y - root.radius < o.y + o.h;
         const nearX = Math.max(o.x - o.length / 2, Math.min(x, o.x + o.length / 2));
         return Math.hypot(x - nearX, y - o.y) < root.radius + o.r;
@@ -86,7 +87,7 @@
       const dx = targetX - root.x, dy = targetY - root.y;
       const d = Math.hypot(dx, dy) || 1;
       const oldX = root.x, oldY = root.y;
-      const step = Math.min(root.speed, d);
+      const step = Math.min(root.speed * (performance.now() < slowUntil ? .42 : 1), d);
       // Resolve each axis separately so a wall stops digging downward, but never traps sideways movement.
       const nextX = Math.max(root.radius, Math.min(W - root.radius, oldX + dx / d * step));
       if (!hitsObstacle(nextX, oldY)) root.x = nextX;
@@ -103,13 +104,13 @@
         if (item.taken) continue;
         if (Math.hypot(root.x - item.x, root.y - item.y) < root.radius + item.r + 4 && performance.now() - item.harvestAt > 220) {
           item.harvestAt = performance.now();
-          if (item.type === 'water' || item.type === 'poison') {
+          if (item.type === 'water' || item.type === 'poison' || item.type === 'oil') {
             const lastTunnel = item.tunnels[item.tunnels.length - 1];
             if (!lastTunnel || Math.hypot(root.x - lastTunnel.x, root.y - lastTunnel.y) > root.radius * 1.45) {
               item.tunnels.push({ x: root.x, y: root.y });
               if (item.type === 'water') { water++; health = Math.min(100, health + 6); }
-              else health = Math.max(0, health - 12);
-              for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : '#b6e34b' });
+              else { health = Math.max(0, health - 12); if (item.type === 'oil') slowUntil = performance.now() + 900; }
+              for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'oil' ? '#36312b' : '#b6e34b' });
             }
             if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
             continue;
@@ -179,21 +180,22 @@
         const y = worldY(item.y); if (item.taken || y < -30 || y > H + 30) continue;
         const bob = Math.sin(pulse + item.wobble) * 2;
         ctx.save(); ctx.translate(item.x, y + bob);
-        if (item.type === 'water' || item.type === 'poison') {
+        if (item.type === 'water' || item.type === 'poison' || item.type === 'oil') {
           const poisonous = item.type === 'poison';
-          ctx.fillStyle = poisonous ? '#a9d448' : '#74d9ed'; ctx.shadowColor = poisonous ? '#c9ff4d' : '#70e8ff'; ctx.shadowBlur = 15;
+          const oily = item.type === 'oil';
+          ctx.fillStyle = oily ? '#302b28' : poisonous ? '#a9d448' : '#74d9ed'; ctx.shadowColor = oily ? '#785e3c' : poisonous ? '#c9ff4d' : '#70e8ff'; ctx.shadowBlur = 15;
           ctx.beginPath();
           if (item.shape === 0) ctx.arc(0, 0, item.r, 0, Math.PI * 2);
           else if (item.shape === 1) ctx.ellipse(0, 0, item.r * 1.3, item.r * .72, item.wobble, 0, Math.PI * 2);
           else if (item.shape === 2) { ctx.moveTo(0, -item.r * 1.25); ctx.bezierCurveTo(item.r, -item.r * .35, item.r * .8, item.r * .75, 0, item.r * 1.1); ctx.bezierCurveTo(-item.r * .8, item.r * .75, -item.r, -item.r * .35, 0, -item.r * 1.25); }
           else { ctx.moveTo(0, -item.r); ctx.lineTo(item.r * .95, 0); ctx.lineTo(0, item.r); ctx.lineTo(-item.r * .95, 0); ctx.closePath(); }
           ctx.fill();
-          ctx.fillStyle = poisonous ? '#e7ff9b' : '#d9fbff'; ctx.beginPath(); ctx.arc(-item.r * .25, -item.r * .3, item.r * .19, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = oily ? '#9b8053' : poisonous ? '#e7ff9b' : '#d9fbff'; ctx.beginPath(); ctx.arc(-item.r * .25, -item.r * .3, item.r * .19, 0, Math.PI * 2); ctx.fill();
           if (item.tunnels.length) {
-            ctx.strokeStyle = poisonous ? 'rgba(61, 84, 22, .82)' : 'rgba(82, 50, 35, .78)'; ctx.lineWidth = root.radius * 1.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+            ctx.strokeStyle = oily ? 'rgba(12, 11, 10, .86)' : poisonous ? 'rgba(61, 84, 22, .82)' : 'rgba(82, 50, 35, .78)'; ctx.lineWidth = root.radius * 1.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
             ctx.beginPath(); item.tunnels.forEach((p, i) => i ? ctx.lineTo(p.x - item.x, p.y - item.y) : ctx.moveTo(p.x - item.x, p.y - item.y)); ctx.stroke();
           }
-          if (poisonous) { ctx.strokeStyle = '#496918'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(5, -4); ctx.moveTo(-5, -4); ctx.lineTo(5, 4); ctx.stroke(); }
+          if (poisonous || oily) { ctx.strokeStyle = oily ? '#b09260' : '#496918'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-5, 4); ctx.lineTo(5, -4); ctx.moveTo(-5, -4); ctx.lineTo(5, 4); ctx.stroke(); }
         } else {
           ctx.fillStyle = '#f0b54f'; ctx.shadowColor = '#ffd86e'; ctx.shadowBlur = 12;
           ctx.rotate(item.wobble); ctx.fillRect(-item.r, -item.r, item.r * 2, item.r * 2);
@@ -217,6 +219,7 @@
       ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water  ' + water, 30, 72);
       ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + minerals, 140, 72);
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Depth  ' + depth + ' m', 30, 98);
+      if (performance.now() < slowUntil) { ctx.fillStyle = '#d9ae70'; ctx.fillText('OIL: SLOWED', 470, 56); }
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Health', 305, 35);
       ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 44, 145, 16);
       ctx.fillStyle = health > 35 ? '#73c96b' : '#de6552'; ctx.fillRect(305, 44, 145 * health / 100, 16);
