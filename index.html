@@ -45,7 +45,7 @@
     const upgrades = { oak: { vitality: 0, water: 0, poison: 0 }, apple: { vitality: 0, water: 0, poison: 0 }, pear: { oil: 0, water: 0, poison: 0 } };
     const treeGrowth = { oak: 0, apple: 0, pear: 0 };
     const defenseUpgrades = { firepower: 0, attackSpeed: 0, turrets: 0, armor: 0, repair: 0 };
-    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, techPage: 'defense', turretControlled: false };
+    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, techPage: 'defense', turretControlled: false };
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
@@ -150,7 +150,7 @@
     }
     function startTowerDefense() {
       const now = performance.now();
-      td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 3 + td.wave; td.nextSpawn = now + 600; td.nextShot = now;
+      td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 3 + td.wave; td.nextSpawn = now + 600; td.nextAutoShot = now; td.nextManualShot = now;
       td.burstReady = now; td.treeHealth = defenseMaxHealth(); td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = false; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false;
       gameOver = false; started = false;
     }
@@ -182,7 +182,8 @@
       if (td.waiting || td.techOpen) return;
       if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(260, 760 - td.wave * 35); }
       const target = td.enemies.reduce((nearest, enemy) => !nearest || Math.abs(enemy.x - W / 2) < Math.abs(nearest.x - W / 2) ? enemy : nearest, null);
-      if (!td.turretControlled && target && now >= td.nextShot) { defenseTurrets().forEach(turret => fireTreeShot(target, turret)); td.nextShot = now + defenseAttackCooldown(720, 120); }
+      const automaticTurrets = td.turretControlled ? defenseTurrets().slice(1) : defenseTurrets();
+      if (target && automaticTurrets.length && now >= td.nextAutoShot) { automaticTurrets.forEach(turret => fireTreeShot(target, turret)); td.nextAutoShot = now + defenseAttackCooldown(560, 100); }
       for (const enemy of td.enemies) {
         const distanceToTree = Math.abs(enemy.x - W / 2);
         if (enemy.type !== 'ranged' || distanceToTree > 245) enemy.x += enemy.side * enemy.speed;
@@ -260,7 +261,7 @@
       if (x > W / 2 - 35 && x < W / 2 + 35 && y > 400 && y < 465) { td.turretControlled = !td.turretControlled; return; }
       if (td.turretControlled) {
         const target = td.enemies.reduce((nearest, enemy) => !nearest || Math.hypot(enemy.x - x, enemy.y - y) < Math.hypot(nearest.x - x, nearest.y - y) ? enemy : nearest, null);
-        if (target && performance.now() >= td.nextShot) { fireTreeShot(target); td.nextShot = performance.now() + defenseAttackCooldown(300, 80); }
+        if (target && performance.now() >= td.nextManualShot) { fireTreeShot(target); td.nextManualShot = performance.now() + defenseAttackCooldown(220, 70); }
       } else triggerDefenseBurst();
     }
     resetWorld();
