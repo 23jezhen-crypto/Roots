@@ -42,7 +42,7 @@
             const left = Math.random() < .5;
             obstacles.push({ type: 'wall', x: left ? 0 : rand(W * .58, W * .78), y, w: left ? rand(W * .22, W * .4) : rand(W * .16, W * .28), h: rand(65, 140) });
           } else {
-            obstacles.push({ type: 'tunnel', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(100, 190) });
+            obstacles.push({ type: 'tunnel', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(100, 190), opening: 22, orientation: 'sideways' });
           }
         }
       }
@@ -71,7 +71,11 @@
 
     function hitsObstacle(x, y) {
       return obstacles.some(o => {
-        if (o.type === 'tunnel') return false;
+        if (o.type === 'tunnel') {
+          const insidePipe = x + root.radius > o.x - o.length / 2 && x - root.radius < o.x + o.length / 2 && y + root.radius > o.y - o.r && y - root.radius < o.y + o.r;
+          // Sideways pipes are solid except for the vertical shaft in their center.
+          return insidePipe && Math.abs(x - o.x) > o.opening;
+        }
         if (o.type === 'wall') return x + root.radius > o.x && x - root.radius < o.x + o.w && y + root.radius > o.y && y - root.radius < o.y + o.h;
         const nearX = Math.max(o.x - o.length / 2, Math.min(x, o.x + o.length / 2));
         return Math.hypot(x - nearX, y - o.y) < root.radius + o.r;
@@ -109,7 +113,7 @@
             if (!lastTunnel || Math.hypot(root.x - lastTunnel.x, root.y - lastTunnel.y) > root.radius * 1.45) {
               item.tunnels.push({ x: root.x, y: root.y });
               if (item.type === 'water') { water++; health = Math.min(100, health + 6); }
-              else { health = Math.max(0, health - 12); if (item.type === 'oil') slowUntil = performance.now() + 900; }
+              else { health = Math.max(0, health - (item.type === 'oil' ? 5 : 12)); if (item.type === 'oil') slowUntil = performance.now() + 900; }
               for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'oil' ? '#36312b' : '#b6e34b' });
             }
             if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
@@ -170,9 +174,10 @@
         } else {
           ctx.save(); ctx.translate(o.x, y);
           ctx.strokeStyle = '#697174'; ctx.lineWidth = o.r * 2; ctx.lineCap = 'round';
-          ctx.beginPath(); ctx.moveTo(-o.length / 2, 0); ctx.lineTo(o.length / 2, 0); ctx.stroke();
-          ctx.strokeStyle = '#a6b3b1'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-o.length / 2 + 8, -o.r * .35); ctx.lineTo(o.length / 2 - 8, -o.r * .35); ctx.stroke();
-          ctx.fillStyle = '#4a5051'; for (let x = -o.length / 2 + 20; x < o.length / 2; x += 45) ctx.fillRect(x, -o.r - 5, 7, o.r * 2 + 10);
+          ctx.beginPath(); ctx.moveTo(-o.length / 2, 0); ctx.lineTo(-o.opening, 0); ctx.moveTo(o.opening, 0); ctx.lineTo(o.length / 2, 0); ctx.stroke();
+          ctx.strokeStyle = '#a6b3b1'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-o.length / 2 + 8, -o.r * .35); ctx.lineTo(-o.opening, -o.r * .35); ctx.moveTo(o.opening, -o.r * .35); ctx.lineTo(o.length / 2 - 8, -o.r * .35); ctx.stroke();
+          ctx.strokeStyle = '#b3c0bd'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-o.opening, -o.r); ctx.lineTo(-o.opening, o.r); ctx.moveTo(o.opening, -o.r); ctx.lineTo(o.opening, o.r); ctx.stroke();
+          ctx.fillStyle = '#4a5051'; for (let x = -o.length / 2 + 20; x < -o.opening - 10; x += 45) ctx.fillRect(x, -o.r - 5, 7, o.r * 2 + 10); for (let x = o.opening + 10; x < o.length / 2; x += 45) ctx.fillRect(x, -o.r - 5, 7, o.r * 2 + 10);
           ctx.restore();
         }
       }
