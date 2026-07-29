@@ -21,7 +21,7 @@
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
-    const SAPLING_COST = 40, GROW_STAGE_COST = 10, FULL_GROWTH_STAGE = 4;
+    const APPLE_SEED_DEPTH = 2000, SAPLING_COST = 1, GROW_STAGE_COST = 25, FULL_GROWTH_STAGE = 4;
     let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, slowUntil = 0, activeTree = 'oak';
     let items = [], stones = [], obstacles = [], particles = [];
 
@@ -146,7 +146,7 @@
       root.trail.push({ x: root.x, y: root.y });
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
       depth = Math.max(depth, Math.floor(Math.max(0, root.y) * .15));
-      if (depth >= 2500) seedUnlocked = true;
+      if (depth >= APPLE_SEED_DEPTH) seedUnlocked = true;
       health = Math.max(0, health - .04 - Math.max(0, root.y - oldY) * .028);
       if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
@@ -161,7 +161,7 @@
               item.tunnels.push({ x: root.x, y: root.y });
               if (item.type === 'water') { water++; totalWater++; health = Math.min(100, health + 12); }
               else {
-                const poisonDamage = activeTree === 'apple' ? 6 : 12;
+                const poisonDamage = activeTree === 'apple' ? 4 : 12;
                 health = Math.max(0, health - (item.type === 'oil' ? 5 : poisonDamage));
                 if (item.type === 'oil') slowUntil = performance.now() + 2500;
               }
@@ -304,17 +304,18 @@
         ctx.fillStyle = '#616161'; ctx.fillRect(W / 2 - 105, H / 2 - 4, 210, 50); ctx.fillRect(W / 2 - 105, H / 2 + 58, 210, 50);
         ctx.strokeStyle = '#dddddd'; ctx.strokeRect(W / 2 - 105, H / 2 - 4, 210, 50); ctx.strokeRect(W / 2 - 105, H / 2 + 58, 210, 50);
         ctx.fillStyle = '#ffffff'; ctx.font = 'bold 17px system-ui'; ctx.fillText('RESUME', W / 2, H / 2 + 27); ctx.fillText('RESTART RUN', W / 2, H / 2 + 89);
-        ctx.font = '14px system-ui'; ctx.fillStyle = '#cfcfcf'; ctx.fillText(seedUnlocked ? 'Grow the new tree from the start menu' : 'Reach 2500 m to unlock a new tree seed', W / 2, H / 2 + 140);
+        ctx.font = '14px system-ui'; ctx.fillStyle = '#cfcfcf'; ctx.fillText(seedUnlocked ? 'Grow the Apple Tree from the start menu' : 'Reach 2000 m to unlock an Apple Tree seed', W / 2, H / 2 + 140);
         ctx.textAlign = 'start';
       }
       if (!started) {
         ctx.fillStyle = 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia';
-        ctx.fillText(gameOver ? 'The root has withered' : 'ROOTBOUND', W / 2, H / 2 - 12);
-        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Return to the tree base and try again' : 'Grow from the tree into the soil below', W / 2, H / 2 + 14);
+        ctx.fillText(gameOver ? 'The root has withered' : 'SELECT A TREE', W / 2, H / 2 - 12);
+        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Choose a tree to begin again' : 'Choose a tree to grow into the soil below', W / 2, H / 2 + 14);
         ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('PLAY OAK TREE', W / 2, H / 2 + 57); ctx.textAlign = 'start';
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('OAK TREE — PLAY', W / 2, H / 2 + 53);
+        ctx.font = '12px system-ui'; ctx.fillStyle = '#d9f0bc'; ctx.fillText('Standard poison resistance', W / 2, H / 2 + 70); ctx.textAlign = 'start';
         if (seedUnlocked) {
           ctx.textAlign = 'center'; ctx.fillStyle = totalMinerals >= 50 ? '#6f6f6f' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 92, 280, 50);
           ctx.strokeStyle = '#dedede'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 140, H / 2 + 92, 280, 50);
@@ -333,7 +334,7 @@
           ctx.fillText('CLICK APPLE TREE TO PLAY', W / 2, H / 2 + 122);
           ctx.font = '13px system-ui'; ctx.fillStyle = '#d9f0bc'; ctx.fillText('Better poison resistance', W / 2, H / 2 + 150);
         } else {
-          ctx.fillText((treeLevel === 0 ? 'FEED SEED TO SAPLING' : 'GROW APPLE TREE') + ' — ' + growthCost + ' MINERALS', W / 2, H / 2 + 120);
+          ctx.fillText((treeLevel === 0 ? 'FEED APPLE SEED' : 'GROW APPLE TREE') + ' — ' + growthCost + ' MINERALS', W / 2, H / 2 + 120);
           ctx.font = '13px system-ui'; ctx.fillStyle = '#d9f0bc'; ctx.fillText('Apple Tree stage ' + treeLevel + ' of ' + FULL_GROWTH_STAGE, W / 2, H / 2 + 148);
         }
         ctx.textAlign = 'start';
