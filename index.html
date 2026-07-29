@@ -41,9 +41,12 @@
         poison: { title: 'BITTER SKIN', detail: '-1 poison damage / level', amount: 1, color: '#9cb06a' }
       }
     };
-    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pearTreeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, pearUnlocked = false, slowUntil = 0, boostUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak', lastRunScore = 0, lastGrowthEarned = 0;
+    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pearTreeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, pearUnlocked = false, slowUntil = 0, boostUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak', lastRunScore = 0, lastGrowthEarned = 0, defenseCampaignWave = 1;
     const upgrades = { oak: { vitality: 0, water: 0, poison: 0 }, apple: { vitality: 0, water: 0, poison: 0 }, pear: { oil: 0, water: 0, poison: 0 } };
     const treeGrowth = { oak: 0, apple: 0, pear: 0 };
+    const DEFENSE_COSTS = [3, 6, 9], MAX_DEFENSE_LEVEL = DEFENSE_COSTS.length;
+    const defenseUpgrades = { firepower: 0, reload: 0, armor: 0 };
+    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, turretControlled: false };
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
@@ -137,7 +140,89 @@
       lastRunScore = depth;
       lastGrowthEarned = Math.max(1, Math.floor(lastRunScore / 100));
       treeGrowth[activeTree] = Math.min(30, treeGrowth[activeTree] + lastGrowthEarned);
-      gameOver = true; started = false; resetWorld();
+      resetWorld(); startTowerDefense();
+    }
+    function startTowerDefense() {
+      const now = performance.now();
+      td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 3 + td.wave; td.nextSpawn = now + 600; td.nextShot = now;
+      td.burstReady = now; td.treeHealth = maxHealth() + defenseUpgrades.armor * 20; td.enemies = []; td.shots = []; td.kills = 0; td.waveRewarded = false; td.waiting = false; td.techOpen = false; td.turretControlled = false;
+      gameOver = false; started = false;
+    }
+    function endTowerDefense() {
+      td.active = false; defenseCampaignWave = 1; gameOver = true; started = false;
+    }
+    function spawnDefenseEnemy() {
+      const fromLeft = Math.random() < .5;
+      td.enemies.push({ x: fromLeft ? -25 : W + 25, y: rand(320, 480), side: fromLeft ? 1 : -1, hp: 22 + td.wave * 7, speed: .42 + td.wave * .045, r: 13 + Math.min(7, td.wave), hit: 0 });
+    }
+    function fireTreeShot(target) {
+      const colors = activeTree === 'apple' ? '#e55346' : activeTree === 'pear' ? '#d9d755' : '#aa7045';
+      td.shots.push({ x: W / 2 + 92, y: 445, target, color: colors, damage: (activeTree === 'pear' ? 19 : activeTree === 'apple' ? 17 : 16) + defenseUpgrades.firepower * 5 });
+    }
+    function updateTowerDefense() {
+      const now = performance.now();
+      if (td.waiting || td.techOpen) return;
+      if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(260, 760 - td.wave * 35); }
+      const target = td.enemies.reduce((nearest, enemy) => !nearest || Math.abs(enemy.x - W / 2) < Math.abs(nearest.x - W / 2) ? enemy : nearest, null);
+      if (!td.turretControlled && target && now >= td.nextShot) { fireTreeShot(target); td.nextShot = now + Math.max(220, 720 - upgrades[activeTree].water * 55 - defenseUpgrades.reload * 75); }
+      for (const enemy of td.enemies) {
+        enemy.x += enemy.side * enemy.speed;
+        enemy.y += Math.sin(now / 400 + enemy.x * .02) * .14;
+        if (Math.abs(enemy.x - W / 2) < 35) { td.treeHealth = Math.max(0, td.treeHealth - 9); enemy.hp = 0; }
+      }
+      for (const shot of td.shots) {
+        if (!shot.target || shot.target.hp <= 0) { shot.life = 0; continue; }
+        const dx = shot.target.x - shot.x, dy = shot.target.y - shot.y, distance = Math.hypot(dx, dy) || 1;
+        const step = Math.min(12, distance); shot.x += dx / distance * step; shot.y += dy / distance * step;
+        if (distance < 15) { shot.target.hp -= shot.damage; shot.target.hit = now; shot.life = 0; }
+      }
+      const before = td.enemies.length;
+      td.enemies = td.enemies.filter(enemy => enemy.hp > 0);
+      td.kills += before - td.enemies.length;
+      td.shots = td.shots.filter(shot => shot.life !== 0);
+      if (td.treeHealth <= 0) { endTowerDefense(); return; }
+      if (td.toSpawn === 0 && td.enemies.length === 0) {
+        if (!td.waveRewarded) { treeGrowth[activeTree] = Math.min(30, treeGrowth[activeTree] + td.wave); td.waveRewarded = true; td.waiting = true; }
+      }
+    }
+    function triggerDefenseBurst() {
+      const now = performance.now();
+      if (now < td.burstReady) return;
+      td.burstReady = now + 5000;
+      td.enemies.forEach(enemy => { if (Math.abs(enemy.x - W / 2) < 260) { enemy.hp -= 24; enemy.hit = now; } });
+    }
+    function descendFromDefense() {
+      defenseCampaignWave = td.wave + 1; td.active = false; td.waiting = false; td.techOpen = false; started = true; gameOver = false;
+      health = maxHealth(); root.x = W / 2; root.y = -7; root.trail = []; cameraY = -220;
+    }
+    function startNextDefenseWave() {
+      td.wave++; defenseCampaignWave = td.wave; td.toSpawn = 3 + td.wave * 2; td.nextSpawn = performance.now() + 650; td.waveRewarded = false; td.waiting = false;
+    }
+    function handleDefenseClick(x, y) {
+      if (td.techOpen) {
+        if (x > W / 2 - 95 && x < W / 2 + 95 && y > 500 && y < 550) { td.techOpen = false; return; }
+        const keys = ['firepower', 'reload', 'armor'];
+        const index = Math.floor((x - 115) / 235), key = keys[index];
+        if (key && x < 315 + index * 235 && y > 270 && y < 450 && defenseUpgrades[key] < MAX_DEFENSE_LEVEL) {
+          const level = defenseUpgrades[key], materialCost = DEFENSE_COSTS[level], mineralCost = UPGRADE_MINERAL_COSTS[level], waterCost = UPGRADE_WATER_COSTS[level];
+          if (treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost) {
+            treeGrowth[activeTree] -= materialCost; totalMinerals -= mineralCost; totalWater -= waterCost; defenseUpgrades[key]++;
+            if (key === 'armor') td.treeHealth += 20;
+          }
+        }
+        return;
+      }
+      if (td.waiting) {
+        if (x > 80 && x < 320 && y > 565 && y < 620) { descendFromDefense(); return; }
+        if (x > 340 && x < 560 && y > 565 && y < 620) { startNextDefenseWave(); return; }
+        if (x > 580 && x < 820 && y > 565 && y < 620) { td.techOpen = true; return; }
+        return;
+      }
+      if (x > W / 2 + 60 && x < W / 2 + 125 && y > 408 && y < 472) { td.turretControlled = !td.turretControlled; return; }
+      if (td.turretControlled) {
+        const target = td.enemies.reduce((nearest, enemy) => !nearest || Math.hypot(enemy.x - x, enemy.y - y) < Math.hypot(nearest.x - x, nearest.y - y) ? enemy : nearest, null);
+        if (target && performance.now() >= td.nextShot) { fireTreeShot(target); td.nextShot = performance.now() + Math.max(150, 420 - defenseUpgrades.reload * 65); }
+      } else triggerDefenseBurst();
     }
     resetWorld();
 
@@ -159,6 +244,7 @@
       const r = canvas.getBoundingClientRect();
       const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
       if (e.button !== 0) return;
+      if (td.active) { handleDefenseClick(x, y); canvas.focus(); return; }
       pinnedTreeStats = null;
       if (started && x > W - 110 && x < W - 20 && y > 16 && y < 48) { paused = !paused; canvas.focus(); return; }
       if (paused) {
@@ -230,6 +316,7 @@
     }
 
     function update() {
+      if (td.active) { updateTowerDefense(); return; }
       if (!started || paused) return;
       pulse += .035;
       // The root always grows down; mouse controls its underground path.
@@ -389,7 +476,71 @@
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('BACK TO TREES', W / 2, 531); ctx.textAlign = 'start';
     }
 
+    function drawDefenseTech() {
+      const branches = [
+        { key: 'firepower', title: 'ACORN POWER', detail: '+5 turret damage / level', color: '#d68b52' },
+        { key: 'reload', title: 'GEAR RELOAD', detail: 'faster turret fire / level', color: '#7aaec4' },
+        { key: 'armor', title: 'BARK ARMOR', detail: '+20 tree defense health / level', color: '#91a766' }
+      ];
+      ctx.fillStyle = 'rgba(8, 18, 15, .97)'; ctx.fillRect(70, 90, 760, 480); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(70, 90, 760, 480);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText('TREE DEFENSE TECH', W / 2, 132);
+      ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Uses ' + treeGrowthName() + ', minerals, and water', W / 2, 158);
+      branches.forEach((branch, index) => {
+        const bx = 115 + index * 235, by = 270, level = defenseUpgrades[branch.key];
+        const materialCost = level < MAX_DEFENSE_LEVEL ? DEFENSE_COSTS[level] : null, mineralCost = level < MAX_DEFENSE_LEVEL ? UPGRADE_MINERAL_COSTS[level] : null, waterCost = level < MAX_DEFENSE_LEVEL ? UPGRADE_WATER_COSTS[level] : null;
+        ctx.fillStyle = '#1c3227'; ctx.fillRect(bx, by, 200, 180); ctx.strokeStyle = branch.color; ctx.lineWidth = 2; ctx.strokeRect(bx, by, 200, 180);
+        ctx.fillStyle = branch.color; ctx.font = 'bold 16px system-ui'; ctx.fillText(branch.title, bx + 100, by + 31);
+        ctx.fillStyle = '#e0ead7'; ctx.font = '13px system-ui'; ctx.fillText(branch.detail, bx + 100, by + 58);
+        for (let step = 0; step < MAX_DEFENSE_LEVEL; step++) { ctx.fillStyle = step < level ? branch.color : '#465648'; ctx.beginPath(); ctx.arc(bx + 70 + step * 30, by + 88, 9, 0, Math.PI * 2); ctx.fill(); }
+        const affordable = treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost;
+        ctx.fillStyle = level >= MAX_DEFENSE_LEVEL ? '#536b55' : affordable ? '#4b7a3d' : '#3f4a40'; ctx.fillRect(bx + 18, by + 112, 164, 45); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(bx + 18, by + 112, 164, 45);
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(level >= MAX_DEFENSE_LEVEL ? 'MAXED' : materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W', bx + 100, by + 140);
+      });
+      ctx.fillStyle = '#555555'; ctx.fillRect(W / 2 - 95, 500, 190, 50); ctx.strokeStyle = '#d0d0d0'; ctx.strokeRect(W / 2 - 95, 500, 190, 50); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('BACK TO WAVES', W / 2, 531); ctx.textAlign = 'start';
+    }
+
+    function drawTowerDefense() {
+      const treeColor = activeTree === 'apple' ? '#a94a40' : activeTree === 'pear' ? '#bbb949' : '#92623d';
+      const leafColor = activeTree === 'apple' ? '#6ea541' : activeTree === 'pear' ? '#a9b64a' : '#617f42';
+      const now = performance.now();
+      const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, '#171c22'); sky.addColorStop(1, '#3c2a25');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#241d1e'; ctx.fillRect(0, 500, W, H - 500);
+      ctx.strokeStyle = 'rgba(206, 165, 96, .25)'; ctx.lineWidth = 2; for (let x = 0; x < W; x += 80) { ctx.beginPath(); ctx.moveTo(x, 500); ctx.lineTo(x + 50, H); ctx.stroke(); }
+      const treeX = W / 2, treeY = 500;
+      ctx.shadowColor = '#f1d280'; ctx.shadowBlur = 12; ctx.strokeStyle = treeColor; ctx.lineWidth = 35; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(treeX, treeY); ctx.lineTo(treeX, 372); ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = '#c59c60'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(treeX, 415); ctx.lineTo(treeX - 67, 360); ctx.moveTo(treeX, 402); ctx.lineTo(treeX + 65, 346); ctx.stroke();
+      ctx.fillStyle = leafColor; [[-53,-145,48], [8,-165,58], [59,-144,45], [-10,-208,48]].forEach(([ox, oy, radius]) => { ctx.beginPath(); ctx.arc(treeX + ox, treeY + oy, radius, 0, Math.PI * 2); ctx.fill(); });
+      drawTreeGrowth(treeX, treeY);
+      ctx.save(); ctx.translate(treeX + 92, 445); ctx.fillStyle = td.turretControlled ? '#e4b75e' : '#8a613e'; ctx.beginPath(); ctx.ellipse(0, 4, 16, 20, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#6c4b34'; ctx.fillRect(-18, -8, 36, 9); ctx.strokeStyle = '#f5d67e'; ctx.lineWidth = 2; ctx.stroke(); ctx.restore();
+      for (const enemy of td.enemies) {
+        ctx.save(); ctx.translate(enemy.x, enemy.y); ctx.fillStyle = enemy.hit > now - 100 ? '#f8e0a0' : '#4b5158'; ctx.strokeStyle = '#b7a77d'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, enemy.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#cf714c'; ctx.beginPath(); ctx.arc(enemy.side * 4, -3, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#9d8a62'; ctx.beginPath(); ctx.moveTo(-enemy.r - 6, 7); ctx.lineTo(enemy.r + 6, 7); ctx.stroke(); ctx.restore();
+      }
+      for (const shot of td.shots) { ctx.fillStyle = shot.color; ctx.shadowColor = shot.color; ctx.shadowBlur = 10; ctx.beginPath(); ctx.arc(shot.x, shot.y, 5, 0, Math.PI * 2); ctx.fill(); } ctx.shadowBlur = 0;
+      ctx.fillStyle = 'rgba(10, 17, 18, .86)'; ctx.fillRect(18, 18, 265, 112); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(18, 18, 265, 112);
+      ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 24px Georgia'; ctx.fillText('TREE DEFENSE', 34, 48);
+      ctx.font = '15px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Wave  ' + td.wave + '     Enemies  ' + td.enemies.length, 34, 76);
+      ctx.fillText('Defending with ' + treeGrowthName(), 34, 101);
+      const defenseMaxHealth = maxHealth() + defenseUpgrades.armor * 20;
+      ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 22, 220, 18); ctx.fillStyle = '#79c96d'; ctx.fillRect(305, 22, 220 * td.treeHealth / defenseMaxHealth, 18); ctx.strokeStyle = '#f7e9c8'; ctx.strokeRect(305, 22, 220, 18);
+      ctx.fillStyle = '#f8efcf'; ctx.font = '14px system-ui'; ctx.fillText('TREE HEALTH', 305, 58);
+      const burstReady = now >= td.burstReady; ctx.fillStyle = burstReady ? '#bf8249' : '#4b4a45'; ctx.fillRect(W - 230, 28, 200, 46); ctx.strokeStyle = '#e5c77f'; ctx.strokeRect(W - 230, 28, 200, 46);
+      ctx.fillStyle = '#fff4d5'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText(burstReady ? 'CLICK: DEFENSE BURST' : 'BURST RECHARGING', W - 130, 57); ctx.textAlign = 'start';
+      ctx.fillStyle = 'rgba(255,255,255,.68)'; ctx.font = '14px system-ui'; ctx.fillText(td.turretControlled ? 'Acorn turret controlled — click an enemy to fire.' : 'Click the acorn turret to control it.', 252, H - 26);
+      if (td.waiting) {
+        ctx.fillStyle = 'rgba(8, 15, 12, .9)'; ctx.fillRect(55, 535, 790, 110); ctx.strokeStyle = '#e5c77f'; ctx.lineWidth = 2; ctx.strokeRect(55, 535, 790, 110);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 21px Georgia'; ctx.fillText('WAVE ' + td.wave + ' CLEARED', W / 2, 562);
+        [[80, 240, 'DESCEND AS ROOT'], [340, 220, 'START NEXT WAVE'], [580, 240, 'DEFENSE TECH']].forEach(([x, width, label]) => { ctx.fillStyle = '#4b7a3d'; ctx.fillRect(x, 575, width, 45); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(x, 575, width, 45); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 14px system-ui'; ctx.fillText(label, x + width / 2, 603); });
+        ctx.textAlign = 'start';
+      }
+      if (td.techOpen) drawDefenseTech();
+    }
+
     function draw() {
+      if (td.active) { drawTowerDefense(); return; }
       const surfaceY = worldY(0);
       const depthLight = undergroundLightLevel();
       const deepGlow = clamp((depthLight - .86) / .14);
