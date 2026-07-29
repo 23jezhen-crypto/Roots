@@ -28,7 +28,8 @@
     function worldY(y) { return y - cameraY; }
     function addChunk(fromY) {
       for (let i = 0; i < 22; i++) {
-        const type = Math.random() < .68 ? 'water' : 'mineral';
+        const roll = Math.random();
+        const type = roll < .53 ? 'water' : roll < .68 ? 'poison' : 'mineral';
         items.push({ x: rand(32, W - 32), y: fromY + rand(30, 510), type, r: type === 'water' ? rand(7, 12) : rand(8, 13), taken: false, wobble: rand(0, 6.28) });
       }
       for (let i = 0; i < 20; i++) stones.push({ x: rand(0, W), y: fromY + rand(0, 520), r: rand(14, 40), shade: rand(0, 1) });
@@ -81,7 +82,7 @@
       root.trail.push({ x: root.x, y: root.y });
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
       depth = Math.max(depth, Math.floor(Math.max(0, root.y)));
-      health = Math.max(0, health - .018 - Math.max(0, root.y - oldY) * .022);
+      health = Math.max(0, health - .04 - Math.max(0, root.y - oldY) * .028);
       if (health <= 0) gameOver = true;
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
 
@@ -89,8 +90,11 @@
         if (item.taken) continue;
         if (Math.hypot(root.x - item.x, root.y - item.y) < root.radius + item.r + 4) {
           item.taken = true;
-          if (item.type === 'water') { water++; health = Math.min(100, health + 15); } else minerals++;
-          for (let i = 0; i < 14; i++) particles.push({ x: item.x, y: item.y, vx: rand(-2.2, 2.2), vy: rand(-2.2, 2.2), life: 1, color: item.type === 'water' ? '#75d8ec' : '#ffd267' });
+          if (item.type === 'water') { water++; health = Math.min(100, health + 15); }
+          else if (item.type === 'poison') { health = Math.max(0, health - 30); }
+          else minerals++;
+          if (health <= 0) gameOver = true;
+          for (let i = 0; i < 14; i++) particles.push({ x: item.x, y: item.y, vx: rand(-2.2, 2.2), vy: rand(-2.2, 2.2), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'poison' ? '#b6e34b' : '#ffd267' });
         }
       }
       particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .04; p.life -= .025; });
@@ -150,10 +154,12 @@
         const y = worldY(item.y); if (item.taken || y < -30 || y > H + 30) continue;
         const bob = Math.sin(pulse + item.wobble) * 2;
         ctx.save(); ctx.translate(item.x, y + bob);
-        if (item.type === 'water') {
-          ctx.fillStyle = '#74d9ed'; ctx.shadowColor = '#70e8ff'; ctx.shadowBlur = 15;
+        if (item.type === 'water' || item.type === 'poison') {
+          const poisonous = item.type === 'poison';
+          ctx.fillStyle = poisonous ? '#a9d448' : '#74d9ed'; ctx.shadowColor = poisonous ? '#c9ff4d' : '#70e8ff'; ctx.shadowBlur = 15;
           ctx.beginPath(); ctx.arc(0, 0, item.r, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = '#d9fbff'; ctx.beginPath(); ctx.arc(-3, -4, item.r * .28, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = poisonous ? '#e7ff9b' : '#d9fbff'; ctx.beginPath(); ctx.arc(-3, -4, item.r * .28, 0, Math.PI * 2); ctx.fill();
+          if (poisonous) { ctx.strokeStyle = '#496918'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-4, 3); ctx.lineTo(4, -3); ctx.moveTo(-4, -3); ctx.lineTo(4, 3); ctx.stroke(); }
         } else {
           ctx.fillStyle = '#f0b54f'; ctx.shadowColor = '#ffd86e'; ctx.shadowBlur = 12;
           ctx.rotate(item.wobble); ctx.fillRect(-item.r, -item.r, item.r * 2, item.r * 2);
