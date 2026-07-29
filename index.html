@@ -6,9 +6,9 @@
   <title>Rootbound</title>
   <style>
     * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; background: #10251d; color: #f5ecd3; font-family: Georgia, serif; }
+    html, body { margin: 0; min-height: 100%; background: #1c1c1c; color: #f5ecd3; font-family: Georgia, serif; }
     body { display: grid; place-items: center; min-height: 100vh; overflow: hidden; }
-    #game { width: min(100vw, 900px); height: min(100vh, 680px); display: block; cursor: crosshair; background: #5f3825; box-shadow: 0 18px 60px #08130e; }
+    #game { width: min(100vw, 900px); height: min(100vh, 680px); display: block; cursor: crosshair; background: #5f3825; box-shadow: 0 18px 60px #080808; filter: grayscale(1); }
     .hint { position: fixed; bottom: 14px; font: 13px system-ui, sans-serif; color: #d9cfb5; opacity: .78; pointer-events: none; }
   </style>
 </head>
@@ -20,7 +20,7 @@
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
-    const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, trail: [] };
+    const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
     let cameraY = -220, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false, slowUntil = 0;
     let items = [], stones = [], obstacles = [], particles = [];
 
@@ -49,7 +49,7 @@
     }
     function resetWorld() {
       cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100; slowUntil = 0;
-      root.x = W / 2; root.y = -7; root.trail = [];
+      root.x = W / 2; root.y = -7; root.angle = Math.PI / 2; root.trail = [];
       items = []; stones = []; obstacles = []; particles = [];
       for (let y = 30; y < 2600; y += 500) addChunk(y);
     }
@@ -90,6 +90,7 @@
       const targetY = Math.max(root.y + 55, cameraY + mouse.y);
       const dx = targetX - root.x, dy = targetY - root.y;
       const d = Math.hypot(dx, dy) || 1;
+      root.angle = Math.atan2(dy, dx);
       const oldX = root.x, oldY = root.y;
       const step = Math.min(root.speed * (performance.now() < slowUntil ? .42 : 1), d);
       // Resolve each axis separately so a wall stops digging downward, but never traps sideways movement.
@@ -215,9 +216,10 @@
         ctx.strokeStyle = '#9d6b45'; ctx.lineWidth = 3; ctx.stroke();
       }
       const ry = worldY(root.y);
+      ctx.save(); ctx.translate(root.x, ry); ctx.rotate(root.angle);
       ctx.fillStyle = '#f0d6a1'; ctx.shadowColor = '#ffc96a'; ctx.shadowBlur = 16;
-      ctx.beginPath(); ctx.moveTo(root.x - 7, ry - 7); ctx.quadraticCurveTo(root.x, ry - 11, root.x + 7, ry - 7); ctx.lineTo(root.x + 4, ry + 5); ctx.lineTo(root.x, ry + 15); ctx.lineTo(root.x - 4, ry + 5); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
-      ctx.fillStyle = '#593928'; ctx.beginPath(); ctx.arc(root.x + 2, ry - 3, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-7, -7); ctx.quadraticCurveTo(-11, 0, -7, 7); ctx.lineTo(5, 4); ctx.lineTo(15, 0); ctx.lineTo(5, -4); ctx.closePath(); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#593928'; ctx.beginPath(); ctx.arc(-2, -2, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       for (const p of particles) { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, worldY(p.y), 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
       ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText('ROOTBOUND', 30, 44);
