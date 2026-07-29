@@ -21,7 +21,8 @@
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
-    const APPLE_SEED_DEPTH = 2000, PEAR_TREE_DEPTH = 1, SAPLING_COST = 1, GROW_STAGE_COST = 25, FULL_GROWTH_STAGE = 4;
+    const APPLE_SEED_DEPTH = 2000, PEAR_TREE_DEPTH = 5000, SAPLING_COST = 1, GROW_STAGE_COST = 25, FULL_GROWTH_STAGE = 4;
+    const PEAR_GROWTH_STAGE_COST = 40, PEAR_FULL_GROWTH_STAGE = 4;
     const UPGRADE_COSTS = [1, 1, 1], UPGRADE_WATER_COSTS = [5, 10, 15], MAX_UPGRADE_LEVEL = UPGRADE_COSTS.length;
     const TECH_TREES = {
       oak: {
@@ -40,7 +41,7 @@
         poison: { title: 'BITTER SKIN', detail: '-1 poison damage / level', amount: 1, color: '#9cb06a' }
       }
     };
-    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, pearUnlocked = false, slowUntil = 0, boostUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak';
+    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pearTreeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, pearUnlocked = false, slowUntil = 0, boostUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak';
     const upgrades = { oak: { vitality: 0, water: 0, poison: 0 }, apple: { vitality: 0, water: 0, poison: 0 }, pear: { oil: 0, water: 0, poison: 0 } };
     let items = [], stones = [], obstacles = [], particles = [];
 
@@ -147,7 +148,7 @@
         if (y > 170 && y < 208) {
           if (x > 130 && x < 330) selectedUpgradeTree = 'oak';
           else if (x > 350 && x < 550 && treeLevel >= FULL_GROWTH_STAGE) selectedUpgradeTree = 'apple';
-          else if (x > 570 && x < 770 && pearUnlocked) selectedUpgradeTree = 'pear';
+          else if (x > 570 && x < 770 && pearTreeLevel >= PEAR_FULL_GROWTH_STAGE) selectedUpgradeTree = 'pear';
           canvas.focus(); return;
         }
         const upgrade = upgradeAt(x, y);
@@ -173,8 +174,11 @@
       if (!started && seedUnlocked && !appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 156 && totalMinerals >= growthCost) {
         totalMinerals -= growthCost; treeLevel++; canvas.focus(); return;
       }
-      if (!started && pearUnlocked && x > W / 2 - 142 && x < W / 2 + 142 && y > H / 2 + 184 && y < H / 2 + 244) {
+      if (!started && pearUnlocked && pearTreeLevel >= PEAR_FULL_GROWTH_STAGE && x > W / 2 - 142 && x < W / 2 + 142 && y > H / 2 + 184 && y < H / 2 + 244) {
         activeTree = 'pear'; health = maxHealth(); gameOver = false; started = true; canvas.focus(); return;
+      }
+      if (!started && pearUnlocked && pearTreeLevel < PEAR_FULL_GROWTH_STAGE && x > W / 2 - 142 && x < W / 2 + 142 && y > H / 2 + 184 && y < H / 2 + 244 && totalMinerals >= PEAR_GROWTH_STAGE_COST) {
+        totalMinerals -= PEAR_GROWTH_STAGE_COST; pearTreeLevel++; canvas.focus(); return;
       }
       if (!started && x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) {
         activeTree = 'oak'; health = maxHealth(); gameOver = false; started = true;
@@ -279,7 +283,7 @@
         ctx.fillText('Poison damage: ' + treePoisonDamage, x + 16, y + 56);
         ctx.fillText('Water healing: ' + waterHealing(tree), x + 16, y + 78);
         ctx.fillText('Oil healing: ' + oilHealing(), x + 16, y + 100);
-        ctx.fillText('Oil grants a speed boost', x + 16, y + 126);
+        ctx.fillText(pearTreeLevel >= PEAR_FULL_GROWTH_STAGE ? 'Status: ready to play' : 'Growth: stage ' + pearTreeLevel + ' of ' + PEAR_FULL_GROWTH_STAGE, x + 16, y + 126);
       } else {
         ctx.fillText('Poison damage: ' + treePoisonDamage, x + 16, y + 56);
         ctx.fillText('Water healing: ' + waterHealing(tree), x + 16, y + 78);
@@ -293,7 +297,7 @@
       const branches = Object.entries(TECH_TREES[selectedUpgradeTree]).map(([key, branch]) => ({ key, ...branch }));
       const treeUpgrades = upgrades[selectedUpgradeTree];
       const appleTechUnlocked = treeLevel >= FULL_GROWTH_STAGE;
-      const pearTechUnlocked = pearUnlocked;
+      const pearTechUnlocked = pearTreeLevel >= PEAR_FULL_GROWTH_STAGE;
       ctx.fillStyle = 'rgba(8, 19, 13, .97)'; ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 30px Georgia'; ctx.fillText('TREE UPGRADES', W / 2, y + 40);
@@ -480,8 +484,10 @@
       if (!started && pearUnlocked) {
         ctx.textAlign = 'center'; ctx.fillStyle = '#76623a'; ctx.fillRect(W / 2 - 142, H / 2 + 184, 284, 60);
         ctx.strokeStyle = '#ead48b'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 142, H / 2 + 184, 284, 60);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 16px system-ui'; ctx.fillText('PEAR TREE — PLAY', W / 2, H / 2 + 210);
-        ctx.font = '13px system-ui'; ctx.fillStyle = '#f0df9a'; ctx.fillText('Oil heals and boosts speed', W / 2, H / 2 + 230); ctx.textAlign = 'start';
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 16px system-ui';
+        ctx.fillText(pearTreeLevel >= PEAR_FULL_GROWTH_STAGE ? 'PEAR TREE — PLAY' : 'GROW PEAR TREE — 40 MINERALS', W / 2, H / 2 + 210);
+        ctx.font = '13px system-ui'; ctx.fillStyle = '#f0df9a';
+        ctx.fillText(pearTreeLevel >= PEAR_FULL_GROWTH_STAGE ? 'Oil heals and boosts speed' : 'Pear Tree stage ' + pearTreeLevel + ' of ' + PEAR_FULL_GROWTH_STAGE, W / 2, H / 2 + 230); ctx.textAlign = 'start';
       }
       if (!started && !showUpgradeMenu) {
         ctx.fillStyle = '#465f3e'; ctx.fillRect(W / 2 - 125, H / 2 + 260, 250, 50);
