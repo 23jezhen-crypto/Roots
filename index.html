@@ -72,6 +72,10 @@
     function oilSpeedMultiplier() { return 1.6 + upgrades.pear.oil * .1; }
     function treeGrowthName(tree = activeTree) { return tree === 'apple' ? 'apples' : tree === 'pear' ? 'pears' : 'acorns'; }
     function defenseUpgradeCost(level) { return { material: 3 + level * 3, minerals: 2 + level * 2, water: 2 + level * 2 }; }
+    function hasTreeChoice() { return treeLevel >= FULL_GROWTH_STAGE || pearTreeLevel >= PEAR_FULL_GROWTH_STAGE; }
+    function defenseMaxHealth() { return maxHealth() + defenseUpgrades.armor * 20 + (activeTree === 'oak' ? 40 : 0); }
+    function defenseShotDamage() { return (activeTree === 'apple' ? 25 : activeTree === 'pear' ? 19 : 16) + defenseUpgrades.firepower * 5; }
+    function defenseAttackCooldown(base, minimum) { return Math.max(minimum, base - upgrades[activeTree].water * 55 - defenseUpgrades.attackSpeed * 55 - (activeTree === 'pear' ? 160 : 0)); }
     function menuTreeAt(x, y) {
       if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) return 'oak';
       const appleCardBottom = H / 2 + (treeLevel >= FULL_GROWTH_STAGE ? 174 : 156);
@@ -146,7 +150,7 @@
     function startTowerDefense() {
       const now = performance.now();
       td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 3 + td.wave; td.nextSpawn = now + 600; td.nextShot = now;
-      td.burstReady = now; td.treeHealth = maxHealth() + defenseUpgrades.armor * 20; td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = false; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false;
+      td.burstReady = now; td.treeHealth = defenseMaxHealth(); td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = false; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false;
       gameOver = false; started = false;
     }
     function endTowerDefense() {
@@ -170,14 +174,14 @@
     }
     function fireTreeShot(target, turret = defenseTurrets()[0]) {
       const colors = activeTree === 'apple' ? '#e55346' : activeTree === 'pear' ? '#d9d755' : '#aa7045';
-      td.shots.push({ x: turret.x, y: turret.y, target, color: colors, damage: (activeTree === 'pear' ? 19 : activeTree === 'apple' ? 17 : 16) + defenseUpgrades.firepower * 5 });
+      td.shots.push({ x: turret.x, y: turret.y, target, color: colors, damage: defenseShotDamage() });
     }
     function updateTowerDefense() {
       const now = performance.now();
       if (td.waiting || td.techOpen) return;
       if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(260, 760 - td.wave * 35); }
       const target = td.enemies.reduce((nearest, enemy) => !nearest || Math.abs(enemy.x - W / 2) < Math.abs(nearest.x - W / 2) ? enemy : nearest, null);
-      if (!td.turretControlled && target && now >= td.nextShot) { defenseTurrets().forEach(turret => fireTreeShot(target, turret)); td.nextShot = now + Math.max(120, 720 - upgrades[activeTree].water * 55 - defenseUpgrades.attackSpeed * 55); }
+      if (!td.turretControlled && target && now >= td.nextShot) { defenseTurrets().forEach(turret => fireTreeShot(target, turret)); td.nextShot = now + defenseAttackCooldown(720, 120); }
       for (const enemy of td.enemies) {
         const distanceToTree = Math.abs(enemy.x - W / 2);
         if (enemy.type === 'ground' || distanceToTree > 245) enemy.x += enemy.side * enemy.speed;
@@ -255,7 +259,7 @@
       if (x > W / 2 - 35 && x < W / 2 + 35 && y > 400 && y < 465) { td.turretControlled = !td.turretControlled; return; }
       if (td.turretControlled) {
         const target = td.enemies.reduce((nearest, enemy) => !nearest || Math.hypot(enemy.x - x, enemy.y - y) < Math.hypot(nearest.x - x, nearest.y - y) ? enemy : nearest, null);
-        if (target && performance.now() >= td.nextShot) { fireTreeShot(target); td.nextShot = performance.now() + Math.max(100, 300 - defenseUpgrades.attackSpeed * 30); }
+        if (target && performance.now() >= td.nextShot) { fireTreeShot(target); td.nextShot = performance.now() + defenseAttackCooldown(300, 80); }
       } else triggerDefenseBurst();
     }
     resetWorld();
@@ -264,7 +268,7 @@
       const r = canvas.getBoundingClientRect();
       mouse.x = (e.clientX - r.left) * W / r.width;
       mouse.y = (e.clientY - r.top) * H / r.height;
-      hoveredTree = !started && !showUpgradeMenu ? menuTreeAt(mouse.x, mouse.y) : null;
+      hoveredTree = !started && !showUpgradeMenu && hasTreeChoice() ? menuTreeAt(mouse.x, mouse.y) : null;
     });
     canvas.addEventListener('pointerleave', () => { hoveredTree = null; });
     canvas.addEventListener('contextmenu', e => {
@@ -546,12 +550,13 @@
       ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 24px Georgia'; ctx.fillText('TREE DEFENSE', 34, 48);
       ctx.font = '15px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Wave  ' + td.wave + '     Enemies  ' + td.enemies.length, 34, 76);
       ctx.fillText('Defending with ' + treeGrowthName(), 34, 101);
-      const defenseMaxHealth = maxHealth() + defenseUpgrades.armor * 20;
-      ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 22, 220, 18); ctx.fillStyle = '#79c96d'; ctx.fillRect(305, 22, 220 * td.treeHealth / defenseMaxHealth, 18); ctx.strokeStyle = '#f7e9c8'; ctx.strokeRect(305, 22, 220, 18);
+      const defenseHealthCap = defenseMaxHealth();
+      ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 22, 220, 18); ctx.fillStyle = '#79c96d'; ctx.fillRect(305, 22, 220 * td.treeHealth / defenseHealthCap, 18); ctx.strokeStyle = '#f7e9c8'; ctx.strokeRect(305, 22, 220, 18);
       ctx.fillStyle = '#f8efcf'; ctx.font = '14px system-ui'; ctx.fillText('TREE HEALTH', 305, 58);
       const burstReady = now >= td.burstReady; ctx.fillStyle = burstReady ? '#bf8249' : '#4b4a45'; ctx.fillRect(W - 230, 28, 200, 46); ctx.strokeStyle = '#e5c77f'; ctx.strokeRect(W - 230, 28, 200, 46);
       ctx.fillStyle = '#fff4d5'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText(burstReady ? 'CLICK: DEFENSE BURST' : 'BURST RECHARGING', W - 130, 57); ctx.textAlign = 'start';
-      ctx.fillStyle = 'rgba(255,255,255,.68)'; ctx.font = '14px system-ui'; ctx.fillText(td.turretControlled ? 'Acorn turret controlled — click an enemy to fire.' : 'Click the acorn turret to control it.', 252, H - 26);
+      const defenseBonus = activeTree === 'oak' ? 'Oak bonus: +40 defense health' : activeTree === 'apple' ? 'Apple bonus: increased turret damage' : 'Pear bonus: increased attack speed';
+      ctx.fillStyle = 'rgba(255,255,255,.68)'; ctx.font = '14px system-ui'; ctx.fillText(td.turretControlled ? 'Acorn turret controlled — click an enemy to fire.' : defenseBonus + ' — click the acorn turret to control it.', 172, H - 26);
       if (td.waiting) {
         ctx.fillStyle = 'rgba(8, 15, 12, .9)'; ctx.fillRect(55, 535, 790, 110); ctx.strokeStyle = '#e5c77f'; ctx.lineWidth = 2; ctx.strokeRect(55, 535, 790, 110);
         ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 21px Georgia'; ctx.fillText('WAVE ' + td.wave + ' CLEARED', W / 2, 562);
@@ -695,14 +700,15 @@
         ctx.textAlign = 'start';
       }
       if (!started) {
+        const treeChoiceAvailable = hasTreeChoice();
         ctx.fillStyle = gameOver ? 'rgba(8, 13, 11, .22)' : 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
         if (gameOver) drawDeathTreeSummary();
         ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia';
-        ctx.fillText(gameOver ? (lastEndMessage || 'THE ROOT HAS WITHERED') : 'SELECT A TREE', W / 2, gameOver ? 332 : H / 2 - 12);
-        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Choose a tree to begin again' : 'Hover or right-click a tree to see its stats', W / 2, gameOver ? 356 : H / 2 + 14);
+        ctx.fillText(gameOver ? (lastEndMessage || 'THE ROOT HAS WITHERED') : treeChoiceAvailable ? 'SELECT A TREE' : 'ROOTBOUND', W / 2, gameOver ? 332 : H / 2 - 12);
+        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? (treeChoiceAvailable ? 'Choose a tree to begin again' : 'Return to the Oak Tree and grow again') : treeChoiceAvailable ? 'Hover or right-click a tree to see its stats' : 'Grow from the Oak Tree into the soil below', W / 2, gameOver ? 356 : H / 2 + 14);
         ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('OAK TREE — PLAY', W / 2, H / 2 + 57); ctx.textAlign = 'start';
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText(treeChoiceAvailable ? 'OAK TREE — PLAY' : 'START OAK TREE', W / 2, H / 2 + 57); ctx.textAlign = 'start';
         if (seedUnlocked) {
           ctx.textAlign = 'center'; ctx.fillStyle = totalMinerals >= 50 ? '#6f6f6f' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 92, 280, 50);
           ctx.strokeStyle = '#dedede'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 140, H / 2 + 92, 280, 50);
