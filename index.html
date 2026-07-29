@@ -22,11 +22,40 @@
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
     const APPLE_SEED_DEPTH = 2000, SAPLING_COST = 1, GROW_STAGE_COST = 25, FULL_GROWTH_STAGE = 4;
-    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, slowUntil = 0, activeTree = 'oak';
+    const UPGRADE_COSTS = [10, 20, 30], UPGRADE_WATER_COSTS = [5, 10, 15], MAX_UPGRADE_LEVEL = UPGRADE_COSTS.length;
+    const TECH_TREES = {
+      oak: {
+        vitality: { title: 'DEEP ROOTS', detail: '+20 max health / level', amount: 20, color: '#c7784a' },
+        water: { title: 'RAIN CATCHER', detail: '+5 water healing / level', amount: 5, color: '#63b9db' },
+        poison: { title: 'THICK BARK', detail: '-1 poison damage / level', amount: 1, color: '#9d7848' }
+      },
+      apple: {
+        vitality: { title: 'ORCHARD HEART', detail: '+15 max health / level', amount: 15, color: '#d85a51' },
+        water: { title: 'SWEET SAP', detail: '+6 water healing / level', amount: 6, color: '#ef9b71' },
+        poison: { title: 'ANTITOXIN FRUIT', detail: '-1 poison damage / level', amount: 1, color: '#97c75c' }
+      }
+    };
+    let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, slowUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak';
+    const upgrades = { oak: { vitality: 0, water: 0, poison: 0 }, apple: { vitality: 0, water: 0, poison: 0 } };
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
     function worldY(y) { return y - cameraY; }
+    function maxHealth(tree = activeTree) { return 100 + upgrades[tree].vitality * TECH_TREES[tree].vitality.amount; }
+    function waterHealing(tree = activeTree) { return 12 + upgrades[tree].water * TECH_TREES[tree].water.amount; }
+    function poisonDamage(tree = activeTree) { return Math.max(1, (tree === 'apple' ? 4 : 12) - upgrades[tree].poison * TECH_TREES[tree].poison.amount); }
+    function menuTreeAt(x, y) {
+      if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) return 'oak';
+      const appleCardBottom = H / 2 + (treeLevel >= FULL_GROWTH_STAGE ? 174 : 156);
+      if (seedUnlocked && x > W / 2 - 142 && x < W / 2 + 142 && y > H / 2 + 90 && y < appleCardBottom) return 'apple';
+      return null;
+    }
+    function upgradeAt(x, y) {
+      if (y < 292 || y > 462) return null;
+      const keys = ['vitality', 'water', 'poison'];
+      const index = Math.floor((x - 115) / 235);
+      return index >= 0 && index < keys.length && x < 315 + index * 235 ? keys[index] : null;
+    }
     function addChunk(fromY) {
       for (let i = 0; i < 6; i++) {
         let resource;
@@ -73,7 +102,7 @@
       });
     }
     function resetWorld() {
-      cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100; slowUntil = 0; paused = false;
+      cameraY = -220; depth = 0; water = 0; minerals = 0; health = maxHealth(); slowUntil = 0; paused = false;
       root.x = W / 2; root.y = -7; root.angle = Math.PI / 2; root.trail = [];
       items = []; stones = []; obstacles = []; particles = [];
       for (let y = 30; y < 2600; y += 500) addChunk(y);
@@ -84,22 +113,55 @@
       const r = canvas.getBoundingClientRect();
       mouse.x = (e.clientX - r.left) * W / r.width;
       mouse.y = (e.clientY - r.top) * H / r.height;
+      hoveredTree = !started && !showUpgradeMenu ? menuTreeAt(mouse.x, mouse.y) : null;
+    });
+    canvas.addEventListener('pointerleave', () => { hoveredTree = null; });
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      if (showUpgradeMenu) return;
+      const r = canvas.getBoundingClientRect();
+      const tree = menuTreeAt((e.clientX - r.left) * W / r.width, (e.clientY - r.top) * H / r.height);
+      if (tree) pinnedTreeStats = tree;
     });
     canvas.addEventListener('pointerdown', e => {
       const r = canvas.getBoundingClientRect();
       const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+      if (e.button !== 0) return;
+      pinnedTreeStats = null;
       if (started && x > W - 110 && x < W - 20 && y > 16 && y < 48) { paused = !paused; canvas.focus(); return; }
       if (paused) {
         if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 - 4 && y < H / 2 + 46) { paused = false; }
         else if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 58 && y < H / 2 + 108) { resetWorld(); started = true; }
         canvas.focus(); return;
       }
+      if (!started && showUpgradeMenu) {
+        if (x > W / 2 - 95 && x < W / 2 + 95 && y > 500 && y < 550) { showUpgradeMenu = false; canvas.focus(); return; }
+        if (y > 170 && y < 208) {
+          if (x > W / 2 - 210 && x < W / 2 - 10) selectedUpgradeTree = 'oak';
+          else if (x > W / 2 + 10 && x < W / 2 + 210 && treeLevel >= FULL_GROWTH_STAGE) selectedUpgradeTree = 'apple';
+          canvas.focus(); return;
+        }
+        const upgrade = upgradeAt(x, y);
+        const treeUpgrades = upgrades[selectedUpgradeTree];
+        if (upgrade && treeUpgrades[upgrade] < MAX_UPGRADE_LEVEL) {
+          const cost = UPGRADE_COSTS[treeUpgrades[upgrade]];
+          const waterCost = UPGRADE_WATER_COSTS[treeUpgrades[upgrade]];
+          if (totalMinerals >= cost && totalWater >= waterCost) {
+            totalMinerals -= cost; totalWater -= waterCost; treeUpgrades[upgrade]++;
+            if (upgrade === 'vitality' && selectedUpgradeTree === activeTree) health = Math.min(maxHealth(), health + TECH_TREES[selectedUpgradeTree].vitality.amount);
+          }
+        }
+        canvas.focus(); return;
+      }
+      if (!started && x > W / 2 - 125 && x < W / 2 + 125 && y > H / 2 + 192 && y < H / 2 + 242) {
+        showUpgradeMenu = true; canvas.focus(); return;
+      }
       const appleTreeReady = treeLevel >= FULL_GROWTH_STAGE;
       if (!started && appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 172) {
         activeTree = 'apple'; gameOver = false; started = true; canvas.focus(); return;
       }
       const growthCost = treeLevel === 0 ? SAPLING_COST : GROW_STAGE_COST;
-      if (!started && seedUnlocked && !appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 142 && totalMinerals >= growthCost) {
+      if (!started && seedUnlocked && !appleTreeReady && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 92 && y < H / 2 + 156 && totalMinerals >= growthCost) {
         totalMinerals -= growthCost; treeLevel++; canvas.focus(); return;
       }
       if (!started && x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) {
@@ -159,10 +221,9 @@
             const lastTunnel = item.tunnels[item.tunnels.length - 1];
             if (!lastTunnel || Math.hypot(root.x - lastTunnel.x, root.y - lastTunnel.y) > root.radius * 1.45) {
               item.tunnels.push({ x: root.x, y: root.y });
-              if (item.type === 'water') { water++; totalWater++; health = Math.min(100, health + 12); }
+              if (item.type === 'water') { water++; totalWater++; health = Math.min(maxHealth(), health + waterHealing()); }
               else {
-                const poisonDamage = activeTree === 'apple' ? 4 : 12;
-                health = Math.max(0, health - (item.type === 'oil' ? 5 : poisonDamage));
+                health = Math.max(0, health - (item.type === 'oil' ? 5 : poisonDamage()));
                 if (item.type === 'oil') slowUntil = performance.now() + 2500;
               }
               for (let i = 0; i < 8; i++) particles.push({ x: root.x, y: root.y, vx: rand(-1.6, 1.6), vy: rand(-1.6, 1.6), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'oil' ? '#36312b' : '#b6e34b' });
@@ -183,6 +244,60 @@
       items = items.filter(i => !i.taken || i.y > cameraY - 100);
       stones = stones.filter(s => s.y > cameraY - 160);
       obstacles = obstacles.filter(o => o.y > cameraY - 200);
+    }
+
+    function drawTreeStats(tree) {
+      const x = W - 294, y = H / 2 - 104, w = 274, h = 152;
+      const treePoisonDamage = poisonDamage(tree);
+      ctx.fillStyle = 'rgba(12, 25, 18, .96)'; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = tree === 'apple' ? '#c74d42' : '#9c7b46'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 21px Georgia'; ctx.fillText(tree === 'apple' ? 'APPLE TREE' : 'OAK TREE', x + 16, y + 30);
+      ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce';
+      if (tree === 'apple') {
+        ctx.fillText('Poison damage: ' + treePoisonDamage, x + 16, y + 56);
+        ctx.fillText('Water healing: ' + waterHealing(tree), x + 16, y + 78);
+        ctx.fillText('Max health: ' + maxHealth(tree), x + 16, y + 100);
+        ctx.fillText(treeLevel >= FULL_GROWTH_STAGE ? 'Status: ready to play' : 'Growth: stage ' + treeLevel + ' of ' + FULL_GROWTH_STAGE, x + 16, y + 126);
+      } else {
+        ctx.fillText('Poison damage: ' + treePoisonDamage, x + 16, y + 56);
+        ctx.fillText('Water healing: ' + waterHealing(tree), x + 16, y + 78);
+        ctx.fillText('Max health: ' + maxHealth(tree), x + 16, y + 100);
+        ctx.fillText('Status: ready to play', x + 16, y + 126);
+      }
+    }
+
+    function drawUpgradeTree() {
+      const x = 70, y = 92, w = 760, h = 480;
+      const branches = Object.entries(TECH_TREES[selectedUpgradeTree]).map(([key, branch]) => ({ key, ...branch }));
+      const treeUpgrades = upgrades[selectedUpgradeTree];
+      const appleTechUnlocked = treeLevel >= FULL_GROWTH_STAGE;
+      ctx.fillStyle = 'rgba(8, 19, 13, .97)'; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 30px Georgia'; ctx.fillText('TREE UPGRADES', W / 2, y + 40);
+      ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Each tree has its own permanent upgrade path', W / 2, y + 64);
+      [['oak', 'OAK TREE TECH', W / 2 - 210], ['apple', 'APPLE TREE TECH', W / 2 + 10]].forEach(([tree, label, bx]) => {
+        const locked = tree === 'apple' && !appleTechUnlocked;
+        ctx.fillStyle = locked ? '#303534' : selectedUpgradeTree === tree ? '#4b7a3d' : '#37473a'; ctx.fillRect(bx, 170, 200, 38);
+        ctx.strokeStyle = tree === 'apple' ? '#d85a51' : '#c7784a'; ctx.lineWidth = 2; ctx.strokeRect(bx, 170, 200, 38);
+        ctx.fillStyle = locked ? '#969b96' : '#fff8df'; ctx.font = 'bold 13px system-ui'; ctx.fillText(locked ? 'APPLE TECH — LOCKED' : label, bx + 100, 194);
+      });
+      ctx.strokeStyle = '#866d43'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(W / 2, y + 142); ctx.lineTo(W / 2, y + 168); ctx.moveTo(W / 2, y + 168); ctx.lineTo(215, y + 200); ctx.moveTo(W / 2, y + 168); ctx.lineTo(450, y + 200); ctx.moveTo(W / 2, y + 168); ctx.lineTo(685, y + 200); ctx.stroke();
+      ctx.fillStyle = selectedUpgradeTree === 'apple' ? '#d85a51' : '#c7784a'; ctx.beginPath(); ctx.arc(W / 2, y + 138, 20, 0, Math.PI * 2); ctx.fill();
+      branches.forEach((branch, index) => {
+        const bx = 115 + index * 235, by = 292, level = treeUpgrades[branch.key];
+        const nextCost = level < MAX_UPGRADE_LEVEL ? UPGRADE_COSTS[level] : null;
+        const nextWaterCost = level < MAX_UPGRADE_LEVEL ? UPGRADE_WATER_COSTS[level] : null;
+        ctx.fillStyle = '#1d3324'; ctx.fillRect(bx, by, 200, 180);
+        ctx.strokeStyle = branch.color; ctx.lineWidth = 2; ctx.strokeRect(bx, by, 200, 180);
+        ctx.fillStyle = branch.color; ctx.font = 'bold 17px system-ui'; ctx.fillText(branch.title, bx + 100, by + 31);
+        ctx.font = '13px system-ui'; ctx.fillStyle = '#e0ead7'; ctx.fillText(branch.detail, bx + 100, by + 57);
+        for (let step = 0; step < MAX_UPGRADE_LEVEL; step++) { ctx.fillStyle = step < level ? branch.color : '#465648'; ctx.beginPath(); ctx.arc(bx + 70 + step * 30, by + 88, 9, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = level >= MAX_UPGRADE_LEVEL ? '#536b55' : totalMinerals >= nextCost && totalWater >= nextWaterCost ? '#4b7a3d' : '#3f4a40'; ctx.fillRect(bx + 18, by + 112, 164, 45);
+        ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 1; ctx.strokeRect(bx + 18, by + 112, 164, 45);
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 12px system-ui'; ctx.fillText(level >= MAX_UPGRADE_LEVEL ? 'MAXED' : 'UPGRADE — ' + nextCost + ' M / ' + nextWaterCost + ' W', bx + 100, by + 140);
+      });
+      ctx.fillStyle = '#555555'; ctx.fillRect(W / 2 - 95, 500, 190, 50); ctx.strokeStyle = '#d0d0d0'; ctx.strokeRect(W / 2 - 95, 500, 190, 50);
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('BACK TO TREES', W / 2, 531); ctx.textAlign = 'start';
     }
 
     function draw() {
@@ -283,14 +398,14 @@
       ctx.fillStyle = '#393939'; ctx.beginPath(); ctx.arc(-2, -2, 2, 0, Math.PI * 2); ctx.fill(); ctx.restore();
       for (const p of particles) { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, worldY(p.y), 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
       ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
-      ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText(activeTree === 'apple' ? 'APPLE TREE' : 'OAK TREE', 30, 44);
+      ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText(activeTree === 'apple' ? 'APPLE TREE' : 'ROOTBOUND', 30, 44);
       ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water  ' + totalWater, 30, 72);
       ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + totalMinerals, 140, 72);
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Depth  ' + depth + ' m', 30, 98);
       if (performance.now() < slowUntil) { ctx.fillStyle = '#d9ae70'; ctx.fillText('OIL: SLOWED', 470, 56); }
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Health', 305, 35);
       ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 44, 145, 16);
-      ctx.fillStyle = health > 35 ? '#73c96b' : '#de6552'; ctx.fillRect(305, 44, 145 * health / 100, 16);
+      ctx.fillStyle = health > maxHealth() * .35 ? '#73c96b' : '#de6552'; ctx.fillRect(305, 44, 145 * health / maxHealth(), 16);
       ctx.strokeStyle = '#f7e9c8'; ctx.lineWidth = 2; ctx.strokeRect(305, 44, 145, 16);
       ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '14px system-ui'; ctx.fillText('Follow the mouse downward', W - 215, 32);
       if (started) {
@@ -311,11 +426,10 @@
         ctx.fillStyle = 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia';
         ctx.fillText(gameOver ? 'The root has withered' : 'SELECT A TREE', W / 2, H / 2 - 12);
-        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Choose a tree to begin again' : 'Choose a tree to grow into the soil below', W / 2, H / 2 + 14);
+        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Choose a tree to begin again' : 'Hover or right-click a tree to see its stats', W / 2, H / 2 + 14);
         ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('OAK TREE — PLAY', W / 2, H / 2 + 53);
-        ctx.font = '12px system-ui'; ctx.fillStyle = '#d9f0bc'; ctx.fillText('Standard poison resistance', W / 2, H / 2 + 70); ctx.textAlign = 'start';
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('OAK TREE — PLAY', W / 2, H / 2 + 57); ctx.textAlign = 'start';
         if (seedUnlocked) {
           ctx.textAlign = 'center'; ctx.fillStyle = totalMinerals >= 50 ? '#6f6f6f' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 92, 280, 50);
           ctx.strokeStyle = '#dedede'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 140, H / 2 + 92, 280, 50);
@@ -339,6 +453,14 @@
         }
         ctx.textAlign = 'start';
       }
+      if (!started && !showUpgradeMenu) {
+        ctx.fillStyle = '#465f3e'; ctx.fillRect(W / 2 - 125, H / 2 + 192, 250, 50);
+        ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 125, H / 2 + 192, 250, 50);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#fff8df'; ctx.font = 'bold 16px system-ui'; ctx.fillText('TREE UPGRADES', W / 2, H / 2 + 223); ctx.textAlign = 'start';
+      }
+      if (!started && showUpgradeMenu) drawUpgradeTree();
+      const statsTree = hoveredTree || pinnedTreeStats;
+      if (!started && !showUpgradeMenu && statsTree) drawTreeStats(statsTree);
     }
     function frame() { update(); draw(); requestAnimationFrame(frame); }
     frame();
