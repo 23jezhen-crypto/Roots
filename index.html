@@ -13,7 +13,7 @@
   </style>
 </head>
 <body>
-  <canvas id="game" width="900" height="680" aria-label="Rootbound game"></canvas>
+  <canvas id="game" width="900" height="680" tabindex="0" aria-label="Rootbound game"></canvas>
   <div class="hint">Move your mouse to grow • Collect water and minerals • Keep going down</div>
   <script>
     const canvas = document.querySelector('#game');
@@ -21,7 +21,7 @@
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
-    let cameraY = -220, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false, slowUntil = 0;
+    let cameraY = -220, depth = 0, water = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, slowUntil = 0;
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
@@ -66,7 +66,7 @@
       });
     }
     function resetWorld() {
-      cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100; slowUntil = 0;
+      cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100; slowUntil = 0; paused = false;
       root.x = W / 2; root.y = -7; root.angle = Math.PI / 2; root.trail = [];
       items = []; stones = []; obstacles = []; particles = [];
       for (let y = 30; y < 2600; y += 500) addChunk(y);
@@ -81,10 +81,20 @@
     canvas.addEventListener('pointerdown', e => {
       const r = canvas.getBoundingClientRect();
       const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+      if (started && x > W - 110 && x < W - 20 && y > 16 && y < 48) { paused = !paused; canvas.focus(); return; }
+      if (paused) {
+        if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 - 4 && y < H / 2 + 46) { paused = false; }
+        else if (x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 58 && y < H / 2 + 108) { resetWorld(); started = true; }
+        else if (seedUnlocked && x > W / 2 - 140 && x < W / 2 + 140 && y > H / 2 + 122 && y < H / 2 + 172 && totalMinerals >= 10) { totalMinerals -= 10; treeLevel++; }
+        canvas.focus(); return;
+      }
       if (!started && x > W / 2 - 105 && x < W / 2 + 105 && y > H / 2 + 22 && y < H / 2 + 76) {
         gameOver = false; started = true;
       }
       canvas.focus();
+    });
+    window.addEventListener('keydown', e => {
+      if ((e.key === 'Escape' || e.key.toLowerCase() === 'p') && started) { paused = !paused; e.preventDefault(); }
     });
 
     function hitsObstacle(x, y) {
@@ -104,7 +114,7 @@
     }
 
     function update() {
-      if (!started) return;
+      if (!started || paused) return;
       pulse += .035;
       // The root always grows down; mouse controls its underground path.
       const targetX = mouse.x;
@@ -122,6 +132,7 @@
       root.trail.push({ x: root.x, y: root.y });
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
       depth = Math.max(depth, Math.floor(Math.max(0, root.y) * .15));
+      if (depth >= 2500) seedUnlocked = true;
       health = Math.max(0, health - .04 - Math.max(0, root.y - oldY) * .028);
       if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
@@ -144,7 +155,7 @@
           const finalChunk = item.r <= root.radius * 1.35;
           if (finalChunk) item.taken = true;
           else item.r = Math.max(root.radius, item.r - root.radius);
-          minerals++;
+          minerals++; totalMinerals++;
           if (health <= 0) { gameOver = true; started = false; resetWorld(); return; }
           for (let i = 0; i < 14; i++) particles.push({ x: item.x, y: item.y, vx: rand(-2.2, 2.2), vy: rand(-2.2, 2.2), life: 1, color: item.type === 'water' ? '#75d8ec' : item.type === 'poison' ? '#b6e34b' : '#ffd267' });
         }
@@ -175,6 +186,14 @@
         [[-52,-145,49], [6,-162,57], [57,-142,45], [-10,-206,49]].forEach(([ox, oy, r]) => { ctx.beginPath(); ctx.arc(treeX + ox, surfaceY + oy, r, 0, Math.PI * 2); ctx.fill(); });
         ctx.fillStyle = '#727272';
         [[-33,-167,30], [24,-190,35], [66,-154,25]].forEach(([ox, oy, r]) => { ctx.beginPath(); ctx.arc(treeX + ox, surfaceY + oy, r, 0, Math.PI * 2); ctx.fill(); });
+        if (seedUnlocked) {
+          const seedX = treeX + 125, seedHeight = treeLevel * 24;
+          if (!treeLevel) { ctx.fillStyle = '#bdbdbd'; ctx.beginPath(); ctx.arc(seedX, surfaceY - 10, 9, 0, Math.PI * 2); ctx.fill(); }
+          else {
+            ctx.strokeStyle = '#8b8b8b'; ctx.lineWidth = 7 + treeLevel; ctx.beginPath(); ctx.moveTo(seedX, surfaceY); ctx.lineTo(seedX, surfaceY - seedHeight); ctx.stroke();
+            ctx.fillStyle = '#a9a9a9'; ctx.beginPath(); ctx.arc(seedX - 13, surfaceY - seedHeight - 8, 15 + treeLevel * 2, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(seedX + 13, surfaceY - seedHeight - 4, 14 + treeLevel * 2, 0, Math.PI * 2); ctx.fill();
+          }
+        }
       }
       const soil = ctx.createLinearGradient(0, Math.max(0, surfaceY), 0, H);
       soil.addColorStop(0, '#666666'); soil.addColorStop(1, '#262626');
@@ -247,7 +266,7 @@
       ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
       ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText('ROOTBOUND', 30, 44);
       ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water  ' + water, 30, 72);
-      ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + minerals, 140, 72);
+      ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + totalMinerals, 140, 72);
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Depth  ' + depth + ' m', 30, 98);
       if (performance.now() < slowUntil) { ctx.fillStyle = '#d9ae70'; ctx.fillText('OIL: SLOWED', 470, 56); }
       ctx.fillStyle = '#e9dfc4'; ctx.fillText('Health', 305, 35);
@@ -255,6 +274,23 @@
       ctx.fillStyle = health > 35 ? '#73c96b' : '#de6552'; ctx.fillRect(305, 44, 145 * health / 100, 16);
       ctx.strokeStyle = '#f7e9c8'; ctx.lineWidth = 2; ctx.strokeRect(305, 44, 145, 16);
       ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '14px system-ui'; ctx.fillText('Follow the mouse downward', W - 215, 32);
+      if (started) {
+        ctx.fillStyle = '#555555'; ctx.fillRect(W - 110, 16, 90, 32); ctx.strokeStyle = '#d0d0d0'; ctx.strokeRect(W - 110, 16, 90, 32);
+        ctx.fillStyle = '#f0f0f0'; ctx.font = 'bold 13px system-ui'; ctx.fillText('PAUSE', W - 86, 37);
+      }
+      if (paused) {
+        ctx.fillStyle = 'rgba(10, 10, 10, .8)'; ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = 'center'; ctx.fillStyle = '#f2f2f2'; ctx.font = 'bold 40px Georgia'; ctx.fillText('PAUSED', W / 2, H / 2 - 48);
+        ctx.font = '16px system-ui'; ctx.fillText('Total minerals: ' + totalMinerals, W / 2, H / 2 - 22);
+        ctx.fillStyle = '#616161'; ctx.fillRect(W / 2 - 105, H / 2 - 4, 210, 50); ctx.fillRect(W / 2 - 105, H / 2 + 58, 210, 50);
+        ctx.strokeStyle = '#dddddd'; ctx.strokeRect(W / 2 - 105, H / 2 - 4, 210, 50); ctx.strokeRect(W / 2 - 105, H / 2 + 58, 210, 50);
+        ctx.fillStyle = '#ffffff'; ctx.font = 'bold 17px system-ui'; ctx.fillText('RESUME', W / 2, H / 2 + 27); ctx.fillText('RESTART RUN', W / 2, H / 2 + 89);
+        if (seedUnlocked) {
+          ctx.fillStyle = totalMinerals >= 10 ? '#777777' : '#3f3f3f'; ctx.fillRect(W / 2 - 140, H / 2 + 122, 280, 50); ctx.strokeStyle = '#dddddd'; ctx.strokeRect(W / 2 - 140, H / 2 + 122, 280, 50);
+          ctx.fillStyle = '#ffffff'; ctx.fillText('GROW NEW TREE — 10 MINERALS', W / 2, H / 2 + 154);
+        } else { ctx.font = '14px system-ui'; ctx.fillStyle = '#cfcfcf'; ctx.fillText('Reach 2500 m to unlock a new tree seed', W / 2, H / 2 + 140); }
+        ctx.textAlign = 'start';
+      }
       if (!started) {
         ctx.fillStyle = 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia';
