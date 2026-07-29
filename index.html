@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rootbound</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #10251d; color: #f5ecd3; font-family: Georgia, serif; }
+    body { display: grid; place-items: center; min-height: 100vh; overflow: hidden; }
+    #game { width: min(100vw, 900px); height: min(100vh, 680px); display: block; cursor: crosshair; background: #5f3825; box-shadow: 0 18px 60px #08130e; }
+    .hint { position: fixed; bottom: 14px; font: 13px system-ui, sans-serif; color: #d9cfb5; opacity: .78; pointer-events: none; }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="900" height="680" aria-label="Rootbound game"></canvas>
+  <div class="hint">Move your mouse to grow • Collect water and minerals • Keep going down</div>
+  <script>
+    const canvas = document.querySelector('#game');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const mouse = { x: W / 2, y: H * .58 };
+    const root = { x: W / 2, y: 125, radius: 12, speed: 4.2, trail: [] };
+    let cameraY = 0, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false;
+    let items = [], stones = [], obstacles = [], particles = [];
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+    function worldY(y) { return y - cameraY; }
+    function addChunk(fromY) {
+      for (let i = 0; i < 22; i++) {
+        const type = Math.random() < .68 ? 'water' : 'mineral';
+        items.push({ x: rand(32, W - 32), y: fromY + rand(30, 510), type, r: type === 'water' ? rand(7, 12) : rand(8, 13), taken: false, wobble: rand(0, 6.28) });
+      }
+      for (let i = 0; i < 20; i++) stones.push({ x: rand(0, W), y: fromY + rand(0, 520), r: rand(14, 40), shade: rand(0, 1) });
+      // These leave a clear route around at least one side, but get denser deeper down.
+      for (let i = 0; i < 3; i++) {
+        const y = fromY + rand(80, 470);
+        if (Math.random() < .55) {
+          const left = Math.random() < .5;
+          obstacles.push({ type: 'wall', x: left ? 0 : rand(W * .58, W * .78), y, w: left ? rand(W * .22, W * .4) : rand(W * .16, W * .28), h: rand(65, 140) });
+        } else {
+          obstacles.push({ type: 'tube', x: rand(110, W - 110), y, r: rand(24, 38), length: rand(100, 190) });
+        }
+      }
+    }
+    for (let y = -150; y < 2600; y += 500) addChunk(y);
+
+    canvas.addEventListener('pointermove', e => {
+      const r = canvas.getBoundingClientRect();
+      mouse.x = (e.clientX - r.left) * W / r.width;
+      mouse.y = (e.clientY - r.top) * H / r.height;
+    });
+    canvas.addEventListener('pointerdown', () => { if (gameOver) { health = 100; gameOver = false; } canvas.focus(); });
+
+    function hitsObstacle(x, y) {
+      return obstacles.some(o => {
+        if (o.type === 'wall') return x + root.radius > o.x && x - root.radius < o.x + o.w && y + root.radius > o.y && y - root.radius < o.y + o.h;
+        const nearX = Math.max(o.x - o.length / 2, Math.min(x, o.x + o.length / 2));
+        return Math.hypot(x - nearX, y - o.y) < root.radius + o.r;
+      });
+    }
+
+    function update() {
+      if (gameOver) return;
+      pulse += .035;
+      // The root always grows down; mouse controls its underground path.
+      const targetX = mouse.x;
+      const targetY = Math.max(root.y + 55, cameraY + mouse.y);
+      const dx = targetX - root.x, dy = targetY - root.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const oldX = root.x, oldY = root.y;
+      root.x += dx / d * Math.min(root.speed, d);
+      root.y += dy / d * Math.min(root.speed, d);
+      root.x = Math.max(root.radius, Math.min(W - root.radius, root.x));
+      if (hitsObstacle(root.x, root.y)) { root.x = oldX; root.y = oldY; }
+      root.trail.push({ x: root.x, y: root.y });
+      if (root.trail.length > 135) root.trail.shift();
+      if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
+      depth = Math.max(depth, Math.floor(root.y - 125));
+      health = Math.max(0, health - .008 - Math.max(0, root.y - oldY) * .011);
+      if (health <= 0) gameOver = true;
+      while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
+
+      for (const item of items) {
+        if (item.taken) continue;
+        if (Math.hypot(root.x - item.x, root.y - item.y) < root.radius + item.r + 4) {
+          item.taken = true;
+          if (item.type === 'water') { water++; health = Math.min(100, health + 15); } else minerals++;
+          for (let i = 0; i < 14; i++) particles.push({ x: item.x, y: item.y, vx: rand(-2.2, 2.2), vy: rand(-2.2, 2.2), life: 1, color: item.type === 'water' ? '#75d8ec' : '#ffd267' });
+        }
+      }
+      particles.forEach(p => { p.x += p.vx; p.y += p.vy; p.vy += .04; p.life -= .025; });
+      particles = particles.filter(p => p.life > 0);
+      items = items.filter(i => !i.taken || i.y > cameraY - 100);
+      stones = stones.filter(s => s.y > cameraY - 160);
+      obstacles = obstacles.filter(o => o.y > cameraY - 200);
+    }
+
+    function draw() {
+      const soil = ctx.createLinearGradient(0, 0, 0, H);
+      soil.addColorStop(0, '#70402a'); soil.addColorStop(1, '#2e1b19');
+      ctx.fillStyle = soil; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(20, 9, 8, .14)';
+      for (let y = -((cameraY * .2) % 55); y < H; y += 55) ctx.fillRect(0, y, W, 2);
+      for (const s of stones) {
+        const y = worldY(s.y); if (y < -60 || y > H + 60) continue;
+        ctx.fillStyle = s.shade > .5 ? '#432b28' : '#57342a';
+        ctx.beginPath(); ctx.arc(s.x, y, s.r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(20,10,10,.25)'; ctx.stroke();
+      }
+      for (const o of obstacles) {
+        const y = worldY(o.y); if (y < -160 || y > H + 160) continue;
+        if (o.type === 'wall') {
+          ctx.fillStyle = '#272226'; ctx.fillRect(o.x, y, o.w, o.h);
+          ctx.fillStyle = '#5e5655'; ctx.fillRect(o.x + 5, y + 5, o.w - 10, 7);
+          ctx.strokeStyle = '#171316'; ctx.lineWidth = 3; ctx.strokeRect(o.x, y, o.w, o.h);
+        } else {
+          ctx.save(); ctx.translate(o.x, y);
+          ctx.strokeStyle = '#697174'; ctx.lineWidth = o.r * 2; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(-o.length / 2, 0); ctx.lineTo(o.length / 2, 0); ctx.stroke();
+          ctx.strokeStyle = '#a6b3b1'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-o.length / 2 + 8, -o.r * .35); ctx.lineTo(o.length / 2 - 8, -o.r * .35); ctx.stroke();
+          ctx.fillStyle = '#4a5051'; for (let x = -o.length / 2 + 20; x < o.length / 2; x += 45) ctx.fillRect(x, -o.r - 5, 7, o.r * 2 + 10);
+          ctx.restore();
+        }
+      }
+      for (const item of items) {
+        const y = worldY(item.y); if (item.taken || y < -30 || y > H + 30) continue;
+        const bob = Math.sin(pulse + item.wobble) * 2;
+        ctx.save(); ctx.translate(item.x, y + bob);
+        if (item.type === 'water') {
+          ctx.fillStyle = '#74d9ed'; ctx.shadowColor = '#70e8ff'; ctx.shadowBlur = 15;
+          ctx.beginPath(); ctx.arc(0, 0, item.r, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#d9fbff'; ctx.beginPath(); ctx.arc(-3, -4, item.r * .28, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = '#f0b54f'; ctx.shadowColor = '#ffd86e'; ctx.shadowBlur = 12;
+          ctx.rotate(item.wobble); ctx.fillRect(-item.r, -item.r, item.r * 2, item.r * 2);
+          ctx.fillStyle = '#fff0a8'; ctx.fillRect(-item.r * .35, -item.r * .35, item.r * .7, item.r * .7);
+        }
+        ctx.restore();
+      }
+      if (root.trail.length > 1) {
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); root.trail.forEach((p, i) => i ? ctx.lineTo(p.x, worldY(p.y)) : ctx.moveTo(p.x, worldY(p.y)));
+        ctx.strokeStyle = '#e8d0a0'; ctx.lineWidth = 10; ctx.stroke();
+        ctx.strokeStyle = '#9d6b45'; ctx.lineWidth = 4; ctx.stroke();
+      }
+      const ry = worldY(root.y);
+      ctx.fillStyle = '#f0d6a1'; ctx.shadowColor = '#ffc96a'; ctx.shadowBlur = 16;
+      ctx.beginPath(); ctx.arc(root.x, ry, root.radius, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+      ctx.fillStyle = '#593928'; ctx.beginPath(); ctx.arc(root.x + 3, ry - 2, 3, 0, Math.PI * 2); ctx.fill();
+      for (const p of particles) { ctx.globalAlpha = p.life; ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, worldY(p.y), 3, 0, Math.PI * 2); ctx.fill(); } ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(14, 29, 22, .82)'; ctx.fillRect(16, 16, 270, 96);
+      ctx.fillStyle = '#f8efcf'; ctx.font = 'bold 22px Georgia'; ctx.fillText('ROOTBOUND', 30, 44);
+      ctx.font = '16px system-ui'; ctx.fillStyle = '#8edff0'; ctx.fillText('Water  ' + water, 30, 72);
+      ctx.fillStyle = '#ffd16a'; ctx.fillText('Minerals  ' + minerals, 140, 72);
+      ctx.fillStyle = '#e9dfc4'; ctx.fillText('Depth  ' + depth + ' m', 30, 98);
+      ctx.fillStyle = '#e9dfc4'; ctx.fillText('Health', 305, 35);
+      ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 44, 145, 16);
+      ctx.fillStyle = health > 35 ? '#73c96b' : '#de6552'; ctx.fillRect(305, 44, 145 * health / 100, 16);
+      ctx.strokeStyle = '#f7e9c8'; ctx.lineWidth = 2; ctx.strokeRect(305, 44, 145, 16);
+      ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.font = '14px system-ui'; ctx.fillText('Follow the mouse downward', W - 215, 32);
+      if (gameOver) {
+        ctx.fillStyle = 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia'; ctx.fillText('The root has withered', W / 2, H / 2 - 12);
+        ctx.font = '18px system-ui'; ctx.fillText('Click to continue your descent', W / 2, H / 2 + 28); ctx.textAlign = 'start';
+      }
+    }
+    function frame() { update(); draw(); requestAnimationFrame(frame); }
+    frame();
+  </script>
+</body>
+</html>
