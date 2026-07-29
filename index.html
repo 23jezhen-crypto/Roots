@@ -20,17 +20,17 @@
     const ctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
-    const root = { x: W / 2, y: -210, radius: 12, speed: 4.2, trail: [] };
-    let cameraY = -300, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false;
+    const root = { x: W / 2, y: -7, radius: 12, speed: 4.2, trail: [] };
+    let cameraY = -220, depth = 0, water = 0, minerals = 0, pulse = 0, health = 100, gameOver = false, started = false;
     let items = [], stones = [], obstacles = [], particles = [];
 
     function rand(a, b) { return a + Math.random() * (b - a); }
     function worldY(y) { return y - cameraY; }
     function addChunk(fromY) {
-      for (let i = 0; i < 22; i++) {
+      for (let i = 0; i < 10; i++) {
         const roll = Math.random();
         const type = roll < .53 ? 'water' : roll < .68 ? 'poison' : 'mineral';
-        items.push({ x: rand(32, W - 32), y: fromY + rand(30, 510), type, r: type === 'water' ? rand(7, 12) : rand(8, 13), taken: false, wobble: rand(0, 6.28) });
+        items.push({ x: rand(32, W - 32), y: fromY + rand(30, 510), type, r: type === 'water' ? rand(15, 23) : rand(17, 26), taken: false, wobble: rand(0, 6.28) });
       }
       for (let i = 0; i < 20; i++) stones.push({ x: rand(0, W), y: fromY + rand(0, 520), r: rand(14, 40), shade: rand(0, 1) });
       // The first 50 m is clear soil; obstacles appear only deeper underground.
@@ -48,8 +48,8 @@
       }
     }
     function resetWorld() {
-      cameraY = -300; depth = 0; water = 0; minerals = 0; health = 100;
-      root.x = W / 2; root.y = -210; root.trail = [];
+      cameraY = -220; depth = 0; water = 0; minerals = 0; health = 100;
+      root.x = W / 2; root.y = -7; root.trail = [];
       items = []; stones = []; obstacles = []; particles = [];
       for (let y = 30; y < 2600; y += 500) addChunk(y);
     }
@@ -205,7 +205,7 @@
         ctx.fillStyle = 'rgba(8, 13, 11, .76)'; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = '#f9edca'; ctx.textAlign = 'center'; ctx.font = 'bold 42px Georgia';
         ctx.fillText(gameOver ? 'The root has withered' : 'ROOTBOUND', W / 2, H / 2 - 12);
-        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Return to the tree crown and try again' : 'Grow from the crown to find water below', W / 2, H / 2 + 14);
+        ctx.font = '18px system-ui'; ctx.fillText(gameOver ? 'Return to the tree base and try again' : 'Grow from the tree into the soil below', W / 2, H / 2 + 14);
         ctx.fillStyle = '#4b7a3d'; ctx.fillRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.strokeStyle = '#dcefb9'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 105, H / 2 + 22, 210, 54);
         ctx.fillStyle = '#fff8df'; ctx.font = 'bold 19px system-ui'; ctx.fillText('START', W / 2, H / 2 + 57); ctx.textAlign = 'start';
