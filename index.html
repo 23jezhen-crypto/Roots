@@ -192,7 +192,8 @@
         helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 9, ranged: true, range: 345, group: 'ranged', altitude: [245, 340] }
       }[type];
       const altitude = stats.altitude || (stats.ranged ? [350, 440] : [480, 480]);
-      td.enemies.push({ x: fromLeft ? W / 2 - 1100 : W / 2 + 1100, y: rand(altitude[0], altitude[1]), side: fromLeft ? 1 : -1, type, group: stats.group, hp: stats.hp + td.wave * stats.hpScale, speed: stats.speed + td.wave * .04, r: stats.r, damage: stats.damage, ranged: !!stats.ranged, range: stats.range || 0, nextAttack: performance.now() + 900, nextMelee: performance.now(), hit: 0 });
+      const spawnSide = fromLeft ? -1 : 1, spawnDistance = runnerVision(spawnSide);
+      td.enemies.push({ x: W / 2 + spawnSide * spawnDistance, y: rand(altitude[0], altitude[1]), side: fromLeft ? 1 : -1, type, group: stats.group, hp: stats.hp + td.wave * stats.hpScale, speed: stats.speed + td.wave * .04, r: stats.r, damage: stats.damage, ranged: !!stats.ranged, range: stats.range || 0, nextAttack: performance.now() + 900, nextMelee: performance.now(), hit: 0 });
     }
     function defenseTurrets() {
       const turrets = [{ x: W / 2, y: 432, placement: 'trunk' }];
@@ -221,7 +222,7 @@
     function updateTowerDefense() {
       const now = performance.now();
       if (td.waiting || td.techOpen) return;
-      if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(35, 130 - td.wave * 10); }
+      if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(10, 45 - td.wave * 4); }
       const turrets = defenseTurrets();
       const automaticTurrets = (td.turretControlled ? turrets.slice(1) : turrets).map(turret => ({ turret, index: turrets.indexOf(turret) }));
       if (automaticTurrets.length && now >= td.nextAutoShot) {
@@ -271,7 +272,7 @@
     function startNextDefenseWave() {
       if (!td.preWave) td.wave++;
       td.preWave = false; defenseCampaignWave = td.wave; td.toSpawn = 3 + td.wave * 2; td.spawnCount = 0; td.spawnPattern = ['left', 'right', 'both'][Math.floor(Math.random() * 3)]; td.waveRewarded = false; td.waiting = false;
-      spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = performance.now() + Math.max(35, 130 - td.wave * 10);
+      spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = performance.now() + Math.max(10, 45 - td.wave * 4);
     }
     function handleDefenseClick(x, y) {
       if (td.turretMenu) {
