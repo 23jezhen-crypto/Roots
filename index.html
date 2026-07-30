@@ -47,6 +47,7 @@
     const defenseUpgrades = { firepower: 0, attackSpeed: 0, turrets: 0, armor: 0, repair: 0, generator: 0 };
     const RUNNER_COST = { material: 2, minerals: 2, water: 2 };
     const runnerGrowCost = level => ({ material: 1 + level, minerals: 1 + level, water: 1 + level });
+    const ROOT_TECH_BRANCHES = [{ key: 'core', title: 'CORE FORGE', detail: 'Boosts salvage generation / level', color: '#b9d568' }];
     const TURRET_TYPE_COSTS = { acorn: { salvage: 0, parts: 0 }, rapid: { salvage: 5, parts: 0 }, cannon: { salvage: 7, parts: 0 }, rapidPlus: { salvage: 9, parts: 3 }, cannonPlus: { salvage: 12, parts: 4 }, arc: { salvage: 10, parts: 4 }, rocket: { salvage: 14, parts: 6 }, pulse: { salvage: 8, parts: 5 }, lancer: { salvage: 12, parts: 7 } };
     const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, salvage: 0, parts: 0, waveRewarded: false, waiting: false, preWave: false, spawnPattern: 'both', spawnCount: 0, timeLight: 1, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false, nextPartGeneration: 0 };
     const relicBonuses = { breaker: 0, vitality: 0, water: 0, speed: 0, tdPower: 0, tdSpeed: 0, power: 0, resourceGenerator: 0, weaponArc: 0, weaponRocket: 0, weaponPulse: 0, weaponLancer: 0 };
@@ -391,22 +392,22 @@
           return;
         }
         if (x > W / 2 - 95 && x < W / 2 + 95 && y > 500 && y < 550) { td.techOpen = false; return; }
-        const keys = td.techPage === 'root' ? Object.keys(TECH_TREES[activeTree]) : ['firepower', 'attackSpeed', 'turrets', 'armor', 'repair', 'generator'];
+        const keys = td.techPage === 'root' ? ['core'] : ['firepower', 'attackSpeed', 'turrets', 'armor', 'repair'];
         const cardStart = td.techPage === 'root' ? 115 : 70, cardSpacing = td.techPage === 'root' ? 235 : 122, cardWidth = td.techPage === 'root' ? 200 : 112;
         const index = Math.floor((x - cardStart) / cardSpacing), key = keys[index];
-        const upgradeSet = td.techPage === 'root' ? upgrades[activeTree] : defenseUpgrades;
         if (key && x < cardStart + cardWidth + index * cardSpacing && y > 270 && y < 450) {
-          const level = upgradeSet[key];
+          const level = td.techPage === 'root' ? defenseUpgrades.generator : defenseUpgrades[key];
           const defenseCost = defenseUpgradeCost(level);
           const rootCost = rootUpgradeCost(level);
           const canBuyRoot = td.techPage === 'root' && treeGrowth[activeTree] >= rootCost.material && totalMinerals >= rootCost.minerals && totalWater >= rootCost.water;
-          const canBuyDefense = td.techPage === 'defense' && td.salvage >= defenseCost.salvage && (key !== 'generator' || relicBonuses.power > 0);
+          const canBuyDefense = td.techPage === 'defense' && td.salvage >= defenseCost.salvage;
           if (canBuyRoot || canBuyDefense) {
-            if (td.techPage === 'root') { treeGrowth[activeTree] -= rootCost.material; totalMinerals -= rootCost.minerals; totalWater -= rootCost.water; }
-            else td.salvage -= defenseCost.salvage;
-            upgradeSet[key]++;
-            if (key === 'armor') td.treeHealth += 20;
-            if (td.techPage === 'root' && key === 'vitality') td.treeHealth += TECH_TREES[activeTree].vitality.amount;
+            if (td.techPage === 'root') {
+              treeGrowth[activeTree] -= rootCost.material; totalMinerals -= rootCost.minerals; totalWater -= rootCost.water; defenseUpgrades.generator++;
+            } else {
+              td.salvage -= defenseCost.salvage; defenseUpgrades[key]++;
+              if (key === 'armor') td.treeHealth += 20;
+            }
           }
         }
         return;
@@ -744,11 +745,9 @@
         { key: 'attackSpeed', title: 'RAPID FIRE', detail: 'faster attacks / level', color: '#e1c45e' },
         { key: 'turrets', title: 'TURRET GARDENS', detail: '+1 branch or ground turret / level', color: '#7aaec4' },
         { key: 'armor', title: 'BARK ARMOR', detail: '+20 tree defense health / level', color: '#91a766' },
-        { key: 'repair', title: 'SAP REPAIR', detail: '+12 health after each wave / level', color: '#e58d86' },
-        { key: 'generator', title: 'SALVAGE GENERATOR', detail: relicBonuses.power > 0 ? '+3 salvage per round / level' : 'Requires Power Core relic', color: '#b9d568' }
+        { key: 'repair', title: 'SAP REPAIR', detail: '+12 health after each wave / level', color: '#e58d86' }
       ];
-      const rootBranches = Object.entries(TECH_TREES[activeTree]).map(([key, branch]) => ({ key, ...branch }));
-      const rootPage = td.techPage === 'root', branches = rootPage ? rootBranches : defenseBranches, upgradeSet = rootPage ? upgrades[activeTree] : defenseUpgrades;
+      const rootPage = td.techPage === 'root', branches = rootPage ? ROOT_TECH_BRANCHES : defenseBranches, upgradeSet = rootPage ? { core: defenseUpgrades.generator } : defenseUpgrades;
       ctx.fillStyle = 'rgba(8, 18, 15, .97)'; ctx.fillRect(70, 90, 760, 480); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(70, 90, 760, 480);
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText(rootPage ? 'ROOT UPGRADES' : 'TREE DEFENSE UPGRADES', W / 2, 132);
       ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText(rootPage ? 'Uses ' + treeGrowthName() + ', minerals, and water' : 'Uses enemy Salvage: ' + td.salvage, W / 2, 158);
@@ -762,9 +761,9 @@
         ctx.fillStyle = branch.color; ctx.font = 'bold ' + (rootPage ? 16 : 11) + 'px system-ui'; ctx.fillText(branch.title, bx + cardWidth / 2, by + 31);
         ctx.fillStyle = '#e0ead7'; ctx.font = rootPage ? '13px system-ui' : '9px system-ui'; ctx.fillText(branch.detail, bx + cardWidth / 2, by + 58);
         ctx.fillStyle = branch.color; ctx.font = 'bold 18px system-ui'; ctx.fillText('LEVEL ' + level, bx + cardWidth / 2, by + 96);
-        const affordable = rootPage ? treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost : td.salvage >= defenseCost.salvage && (branch.key !== 'generator' || relicBonuses.power > 0);
+        const affordable = rootPage ? treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost : td.salvage >= defenseCost.salvage;
         ctx.fillStyle = affordable ? '#4b7a3d' : '#3f4a40'; ctx.fillRect(bx + 12, by + 112, cardWidth - 24, 45); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(bx + 12, by + 112, cardWidth - 24, 45);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold ' + (rootPage ? 10 : 7) + 'px system-ui'; ctx.fillText(rootPage ? materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W' : (branch.key === 'generator' && relicBonuses.power <= 0 ? 'POWER CORE NEEDED' : defenseCost.salvage + ' SALVAGE'), bx + cardWidth / 2, by + 140);
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold ' + (rootPage ? 10 : 7) + 'px system-ui'; ctx.fillText(rootPage ? materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W' : defenseCost.salvage + ' SALVAGE', bx + cardWidth / 2, by + 140);
       });
       ctx.fillStyle = '#555555'; ctx.fillRect(W / 2 - 95, 500, 190, 50); ctx.strokeStyle = '#d0d0d0'; ctx.strokeRect(W / 2 - 95, 500, 190, 50); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('BACK TO WAVES', W / 2, 531); ctx.textAlign = 'start';
     }
