@@ -155,6 +155,14 @@
       relics = []; ensureRelicsThrough(10000); relicChoice = null;
       for (let y = 30; y < 2600; y += 500) addChunk(y);
     }
+    function resetAfterDefenseDefeat() {
+      totalWater = 0; totalMinerals = 0; treeLevel = 0; pearTreeLevel = 0; seedUnlocked = false; pearUnlocked = false; activeTree = 'oak'; defenseCampaignWave = 1;
+      Object.values(upgrades).forEach(treeUpgrades => Object.keys(treeUpgrades).forEach(key => treeUpgrades[key] = 0));
+      Object.keys(treeGrowth).forEach(tree => treeGrowth[tree] = 0);
+      Object.keys(defenseUpgrades).forEach(key => defenseUpgrades[key] = 0);
+      Object.keys(relicBonuses).forEach(key => relicBonuses[key] = 0); claimedRelics.clear();
+      resetWorld();
+    }
     function returnToTreeAfterDeath() {
       lastEndMessage = '';
       lastRunScore = depth;
@@ -172,7 +180,7 @@
       gameOver = false; started = false;
     }
     function endTowerDefense() {
-      td.active = false; defenseCampaignWave = 1; lastEndMessage = 'YOUR TREE WAS CUT DOWN'; gameOver = true; started = false;
+      td.active = false; td.enemies = []; td.shots = []; td.enemyShots = []; td.runners = []; td.turretSettings = []; lastEndMessage = 'YOUR TREE WAS CUT DOWN'; resetAfterDefenseDefeat(); gameOver = true; started = false;
     }
     function spawnDefenseEnemy() {
       const fromLeft = td.spawnPattern === 'left' ? true : td.spawnPattern === 'right' ? false : td.spawnCount++ % 2 === 0;
@@ -264,10 +272,28 @@
       td.burstReady = now + 5000;
       td.enemies.forEach(enemy => { if (Math.abs(enemy.x - W / 2) < 260) { enemy.hp -= 24; enemy.hit = now; } });
     }
+    function findSafeRootSpawn(baseX, baseY) {
+      const offsets = [0, -35, 35, -70, 70, -110, 110, -155, 155, -210, 210];
+      for (const yOffset of [0, -35, 35, -70, 70]) {
+        for (const xOffset of offsets) {
+          const x = clamp(baseX + xOffset, root.radius, W - root.radius), y = Math.max(0, baseY + yOffset);
+          const overlapsResource = items.some(item => !item.taken && Math.hypot(x - item.x, y - item.y) < root.radius + item.r + 18);
+          const overlapsRelic = relics.some(relic => !relic.claimed && Math.hypot(x - relic.x, y - relic.y) < root.radius + relic.r + 18);
+          const overlapsObstacle = obstacles.some(obstacle => {
+            if (obstacle.type === 'wall') return x + root.radius > obstacle.x - 12 && x - root.radius < obstacle.x + obstacle.w + 12 && y + root.radius > obstacle.y - 12 && y - root.radius < obstacle.y + obstacle.h + 12;
+            return Math.hypot(x - obstacle.x, y - obstacle.y) < root.radius + obstacle.r + obstacle.length / 2;
+          });
+          if (!overlapsResource && !overlapsRelic && !overlapsObstacle) return { x, y };
+        }
+      }
+      return { x: clamp(baseX, root.radius, W - root.radius), y: Math.max(0, baseY) };
+    }
     function descendFromDefense() {
       defenseCampaignWave = td.wave + 1; td.active = false; td.waiting = false; td.techOpen = false; started = true; gameOver = false;
       health = maxHealth(); root.x = td.returnRootX; root.y = td.returnRootY; root.trail = td.returnTrail.map(point => ({ ...point })); depth = td.returnDepth; cameraY = root.y - H * .58;
       while (stones.length && cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
+      const safeSpawn = findSafeRootSpawn(root.x, root.y); root.x = safeSpawn.x; root.y = safeSpawn.y;
+      if (!root.trail.length || Math.hypot(root.trail[root.trail.length - 1].x - root.x, root.trail[root.trail.length - 1].y - root.y) > 1) root.trail.push({ x: root.x, y: root.y });
     }
     function startNextDefenseWave() {
       if (!td.preWave) td.wave++;
