@@ -44,12 +44,12 @@
     let cameraY = -220, depth = 0, water = 0, totalWater = 0, minerals = 0, totalMinerals = 0, treeLevel = 0, pearTreeLevel = 0, pulse = 0, health = 100, gameOver = false, started = false, paused = false, seedUnlocked = false, pearUnlocked = false, slowUntil = 0, boostUntil = 0, activeTree = 'oak', hoveredTree = null, pinnedTreeStats = null, showUpgradeMenu = false, selectedUpgradeTree = 'oak', lastRunScore = 0, lastGrowthEarned = 0, defenseCampaignWave = 1, lastEndMessage = '';
     const upgrades = { oak: { vitality: 0, water: 0, poison: 0 }, apple: { vitality: 0, water: 0, poison: 0 }, pear: { oil: 0, water: 0, poison: 0 } };
     const treeGrowth = { oak: 0, apple: 0, pear: 0 };
-    const defenseUpgrades = { firepower: 0, attackSpeed: 0, turrets: 0, armor: 0, repair: 0 };
+    const defenseUpgrades = { firepower: 0, attackSpeed: 0, turrets: 0, armor: 0, repair: 0, generator: 0 };
     const RUNNER_COST = { material: 2, minerals: 2, water: 2 };
     const runnerGrowCost = level => ({ material: 1 + level, minerals: 1 + level, water: 1 + level });
-    const TURRET_TYPE_COSTS = { acorn: { material: 0, minerals: 0, water: 0 }, rapid: { material: 4, minerals: 3, water: 3 }, cannon: { material: 6, minerals: 5, water: 5 }, rapidPlus: { material: 7, minerals: 5, water: 5 }, cannonPlus: { material: 9, minerals: 7, water: 7 } };
-    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, preWave: false, spawnPattern: 'both', spawnCount: 0, timeLight: 1, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false };
-    const relicBonuses = { breaker: 0, water: 0, tdPower: 0, tdSpeed: 0 };
+    const TURRET_TYPE_COSTS = { acorn: { salvage: 0, parts: 0 }, rapid: { salvage: 5, parts: 0 }, cannon: { salvage: 7, parts: 0 }, rapidPlus: { salvage: 9, parts: 3 }, cannonPlus: { salvage: 12, parts: 4 }, arc: { salvage: 10, parts: 4 }, rocket: { salvage: 14, parts: 6 }, pulse: { salvage: 8, parts: 5 }, lancer: { salvage: 12, parts: 7 } };
+    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, salvage: 0, parts: 0, waveRewarded: false, waiting: false, preWave: false, spawnPattern: 'both', spawnCount: 0, timeLight: 1, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false, nextPartGeneration: 0 };
+    const relicBonuses = { breaker: 0, vitality: 0, water: 0, speed: 0, tdPower: 0, tdSpeed: 0, power: 0, resourceGenerator: 0, weaponArc: 0, weaponRocket: 0, weaponPulse: 0, weaponLancer: 0 };
     const claimedRelics = new Set();
     let items = [], stones = [], obstacles = [], particles = [], relics = [], relicChoice = null;
 
@@ -70,15 +70,17 @@
       const light = undergroundLightLevel();
       return light < .52 ? blendColor('352015', '1d1d1d', light / .52) : blendColor('1d1d1d', '030405', (light - .52) / .48);
     }
-    function maxHealth(tree = activeTree) { return (tree === 'oak' ? 120 : 100) + (upgrades[tree].vitality || 0) * (TECH_TREES[tree].vitality?.amount || 0); }
+    function maxHealth(tree = activeTree) { return (tree === 'oak' ? 120 : 100) + (upgrades[tree].vitality || 0) * (TECH_TREES[tree].vitality?.amount || 0) + relicBonuses.vitality * 30; }
     function waterHealing(tree = activeTree) { return (tree === 'pear' ? 6 : 12) + upgrades[tree].water * TECH_TREES[tree].water.amount + relicBonuses.water * 8; }
     function poisonDamage(tree = activeTree) { return Math.max(1, (tree === 'apple' ? 4 : tree === 'pear' ? 16 : 12) - upgrades[tree].poison * TECH_TREES[tree].poison.amount); }
     function oilHealing() { return 10 + upgrades.pear.oil * TECH_TREES.pear.oil.amount; }
     function oilSpeedMultiplier() { return 1.6 + upgrades.pear.oil * .1; }
     function treeGrowthName(tree = activeTree) { return tree === 'apple' ? 'apples' : tree === 'pear' ? 'pears' : 'acorns'; }
-    function defenseUpgradeCost(level) { return { material: 3 + level * 3, minerals: 2 + level * 2, water: 2 + level * 2 }; }
+    function defenseUpgradeCost(level) { return { salvage: 4 + level * 4 }; }
+    function turretUpgradeCost(level) { return { parts: 2 + level * 2 }; }
     function hasTreeChoice() { return treeLevel >= FULL_GROWTH_STAGE || pearTreeLevel >= PEAR_FULL_GROWTH_STAGE; }
     function defenseMaxHealth() { return maxHealth() + defenseUpgrades.armor * 20 + relicBonuses.tdPower * 30 + (activeTree === 'oak' ? 40 : 0); }
+    function advancedTurretUnlocked() { return defenseUpgrades.firepower > 0 || defenseUpgrades.attackSpeed > 0 || defenseUpgrades.turrets > 0 || defenseUpgrades.armor > 0 || defenseUpgrades.repair > 0 || defenseUpgrades.generator > 0; }
     function defenseShotDamage() { return (activeTree === 'apple' ? 25 : activeTree === 'pear' ? 19 : 16) + defenseUpgrades.firepower * 5 + relicBonuses.tdPower * 8; }
     function defenseAttackCooldown(base, minimum) { return Math.max(minimum, base - upgrades[activeTree].water * 55 - defenseUpgrades.attackSpeed * 55 - relicBonuses.tdSpeed * 100 - (activeTree === 'pear' ? 160 : 0)); }
     function rootUpgradeCost(level) { return { material: 5 + level * 5, minerals: 3 + level * 2, water: 3 + level * 2 }; }
@@ -176,7 +178,7 @@
     function startTowerDefense() {
       const now = performance.now();
       td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 0; td.nextSpawn = now + 600; td.nextAutoShot = now; td.nextManualShot = now;
-      td.burstReady = now; td.treeHealth = defenseMaxHealth(); td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = true; td.preWave = true; td.spawnPattern = 'both'; td.spawnCount = 0; td.timeLight = 1; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false; td.runners = []; td.placingRunner = false; td.turretMenu = false; td.turretSettings = []; td.viewOffset = 0;
+      td.burstReady = now; td.treeHealth = defenseMaxHealth(); td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.salvage = 0; td.parts = 0; td.waveRewarded = false; td.waiting = true; td.preWave = true; td.spawnPattern = 'both'; td.spawnCount = 0; td.timeLight = 1; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false; td.runners = []; td.placingRunner = false; td.turretMenu = false; td.turretSettings = []; td.viewOffset = 0; td.nextPartGeneration = now + 1200;
       gameOver = false; started = false;
     }
     function endTowerDefense() {
@@ -187,26 +189,26 @@
       const night = defenseTimeOfDay() === 'night';
       const roll = Math.random(), type = night ? (roll < .3 ? 'nightRaider' : roll < .55 ? 'moonWalker' : roll < .72 ? 'specterDrone' : roll < .88 ? 'siegeMech' : 'swarm') : (roll < .18 ? 'ground' : roll < .3 ? 'shieldTrooper' : roll < .42 ? 'airship' : roll < .52 ? 'tank' : roll < .62 ? 'armoredCar' : roll < .72 ? 'walker' : roll < .8 ? 'artillery' : roll < .87 ? 'gunship' : roll < .92 ? 'swarm' : roll < .96 ? 'brute' : roll < .98 ? 'jet' : 'helicopter');
       const stats = {
-        ground: { hp: 26, hpScale: 7, speed: .48, r: 16, damage: 9, group: 'ground' },
-        shieldTrooper: { hp: 62, hpScale: 11, speed: .3, r: 18, damage: 11, group: 'ground' },
-        airship: { hp: 38, hpScale: 8, speed: .25, r: 24, damage: 4, ranged: true, range: 190, group: 'ranged', altitude: [260, 340] },
-        tank: { hp: 72, hpScale: 14, speed: .23, r: 24, damage: 18, group: 'tank' },
-        armoredCar: { hp: 52, hpScale: 11, speed: .5, r: 20, damage: 14, group: 'tank' },
-        walker: { hp: 86, hpScale: 15, speed: .32, r: 25, damage: 20, group: 'tank' },
-        artillery: { hp: 54, hpScale: 10, speed: .22, r: 22, damage: 7, ranged: true, range: 220, group: 'ranged', altitude: [390, 440] },
-        gunship: { hp: 70, hpScale: 12, speed: .38, r: 25, damage: 6, ranged: true, range: 210, group: 'ranged', altitude: [210, 300] },
-        swarm: { hp: 10, hpScale: 4, speed: .82, r: 10, damage: 5, group: 'ground' },
-        brute: { hp: 108, hpScale: 18, speed: .18, r: 29, damage: 28, group: 'tank' },
-        nightRaider: { hp: 34, hpScale: 8, speed: .6, r: 16, damage: 5, ranged: true, range: 200, group: 'ranged' },
-        moonWalker: { hp: 92, hpScale: 16, speed: .3, r: 25, damage: 22, group: 'tank' },
-        specterDrone: { hp: 22, hpScale: 6, speed: .88, r: 12, damage: 4, ranged: true, range: 205, group: 'ranged', altitude: [210, 340] },
-        siegeMech: { hp: 128, hpScale: 20, speed: .16, r: 31, damage: 32, group: 'tank' },
-        jet: { hp: 28, hpScale: 7, speed: 1.1, r: 16, damage: 6, ranged: true, range: 250, group: 'ranged', altitude: [145, 230] },
-        helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 5, ranged: true, range: 210, group: 'ranged', altitude: [245, 340] }
+        ground: { hp: 26, hpScale: 7, speed: .48, r: 16, damage: 9, group: 'ground', partsDrop: 1 },
+        shieldTrooper: { hp: 62, hpScale: 11, speed: .3, r: 18, damage: 11, group: 'ground', partsDrop: 2 },
+        airship: { hp: 38, hpScale: 8, speed: .25, r: 24, damage: 4, ranged: true, range: 190, group: 'ranged', altitude: [260, 340], partsDrop: 1 },
+        tank: { hp: 72, hpScale: 14, speed: .23, r: 24, damage: 18, group: 'tank', partsDrop: 2 },
+        armoredCar: { hp: 52, hpScale: 11, speed: .5, r: 20, damage: 14, group: 'tank', partsDrop: 1 },
+        walker: { hp: 86, hpScale: 15, speed: .32, r: 25, damage: 20, group: 'tank', partsDrop: 2 },
+        artillery: { hp: 54, hpScale: 10, speed: .22, r: 22, damage: 7, ranged: true, range: 220, group: 'ranged', altitude: [390, 440], partsDrop: 2 },
+        gunship: { hp: 70, hpScale: 12, speed: .38, r: 25, damage: 6, ranged: true, range: 210, group: 'ranged', altitude: [210, 300], partsDrop: 2 },
+        swarm: { hp: 10, hpScale: 4, speed: .82, r: 10, damage: 5, group: 'ground', partsDrop: 1 },
+        brute: { hp: 108, hpScale: 18, speed: .18, r: 29, damage: 28, group: 'tank', partsDrop: 3 },
+        nightRaider: { hp: 34, hpScale: 8, speed: .6, r: 16, damage: 5, ranged: true, range: 200, group: 'ranged', partsDrop: 1 },
+        moonWalker: { hp: 92, hpScale: 16, speed: .3, r: 25, damage: 22, group: 'tank', partsDrop: 3 },
+        specterDrone: { hp: 22, hpScale: 6, speed: .88, r: 12, damage: 4, ranged: true, range: 205, group: 'ranged', altitude: [210, 340], partsDrop: 1 },
+        siegeMech: { hp: 128, hpScale: 20, speed: .16, r: 31, damage: 32, group: 'tank', partsDrop: 4 },
+        jet: { hp: 28, hpScale: 7, speed: 1.1, r: 16, damage: 6, ranged: true, range: 250, group: 'ranged', altitude: [145, 230], partsDrop: 1 },
+        helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 5, ranged: true, range: 210, group: 'ranged', altitude: [245, 340], partsDrop: 2 }
       }[type];
       const altitude = stats.altitude || (stats.ranged ? [350, 440] : [480, 480]);
       const spawnSide = fromLeft ? -1 : 1, spawnDistance = runnerVision(spawnSide);
-      td.enemies.push({ x: W / 2 + spawnSide * spawnDistance, y: rand(altitude[0], altitude[1]), side: fromLeft ? 1 : -1, type, group: stats.group, hp: stats.hp + td.wave * stats.hpScale, speed: stats.speed + td.wave * .04, r: stats.r, damage: stats.damage, ranged: !!stats.ranged, range: stats.range || 0, nextAttack: performance.now() + 900, nextMelee: performance.now(), hit: 0 });
+      td.enemies.push({ x: W / 2 + spawnSide * spawnDistance, y: rand(altitude[0], altitude[1]), side: fromLeft ? 1 : -1, type, group: stats.group, hp: stats.hp + td.wave * stats.hpScale, speed: stats.speed + td.wave * .04, r: stats.r, damage: stats.damage, salvage: stats.group === 'tank' ? 3 : stats.ranged ? 2 : 1, partsDrop: stats.partsDrop || 0, ranged: !!stats.ranged, range: stats.range || 0, nextAttack: performance.now() + 900, nextMelee: performance.now(), hit: 0 });
     }
     function defenseTurrets() {
       const turrets = [{ x: W / 2, y: 432, placement: 'trunk' }];
@@ -229,16 +231,29 @@
     }
     function fireTreeShot(target, turret = defenseTurrets()[0], index = 0) {
       const colors = activeTree === 'apple' ? '#e55346' : activeTree === 'pear' ? '#d9d755' : '#aa7045';
-      const type = (td.turretSettings[index] || { type: 'acorn' }).type;
-      const damage = defenseShotDamage() + (type === 'cannon' ? 18 : type === 'cannonPlus' ? 34 : type === 'rapid' ? -Math.floor(defenseShotDamage() * .35) : type === 'rapidPlus' ? -Math.floor(defenseShotDamage() * .15) : 0);
-      const shots = type === 'rapid' ? 2 : type === 'rapidPlus' ? 3 : 1;
-      for (let shot = 0; shot < shots; shot++) td.shots.push({ x: turret.x, y: turret.y, target, color: type === 'cannon' || type === 'cannonPlus' ? '#ffb35a' : colors, damage });
+      const setting = td.turretSettings[index] || { type: 'acorn', level: 0 };
+      const type = setting.type;
+      const level = Math.max(0, setting.level || 0);
+      let damage = defenseShotDamage();
+      let shots = 1;
+      if (type === 'rapid') { shots = 2; damage -= Math.floor(defenseShotDamage() * .35); }
+      else if (type === 'rapidPlus') { shots = 3; damage -= Math.floor(defenseShotDamage() * .15); }
+      else if (type === 'cannon') { damage += 18; }
+      else if (type === 'cannonPlus') { damage += 34; }
+      else if (type === 'rocket') { damage += 42; }
+      else if (type === 'arc') { damage += 12; shots = 2; }
+      else if (type === 'pulse') { shots = 2; damage += 6 + level * 3; }
+      else if (type === 'lancer') { damage += 10 + level * 4; }
+      damage += level * 2;
+      const color = type === 'cannon' || type === 'cannonPlus' || type === 'rocket' ? '#ffb35a' : type === 'arc' ? '#7eeeff' : type === 'pulse' ? '#7de7ff' : type === 'lancer' ? '#f2c65b' : colors;
+      for (let shot = 0; shot < shots; shot++) td.shots.push({ x: turret.x, y: turret.y, target, color, damage });
     }
     function updateTowerDefense() {
       const now = performance.now();
       const phase = defenseTimeOfDay(), targetLight = phase === 'sunny' ? 1 : phase === 'night' ? 0 : .68;
       td.timeLight += (targetLight - td.timeLight) * .002;
       if (td.waiting || td.techOpen) return;
+      if (relicBonuses.resourceGenerator > 0 && now >= td.nextPartGeneration) { td.parts += relicBonuses.resourceGenerator; td.nextPartGeneration = now + 1800; }
       if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(10, 45 - td.wave * 4); }
       const turrets = defenseTurrets();
       const automaticTurrets = (td.turretControlled ? turrets.slice(1) : turrets).map(turret => ({ turret, index: turrets.indexOf(turret) }));
@@ -260,6 +275,9 @@
         const step = Math.min(12, distance); shot.x += dx / distance * step; shot.y += dy / distance * step;
         if (distance < 15) { shot.target.hp -= shot.damage; shot.target.hit = now; shot.life = 0; }
       }
+      const defeatedEnemies = td.enemies.filter(enemy => enemy.hp <= 0);
+      td.salvage += defeatedEnemies.reduce((total, enemy) => total + enemy.salvage, 0);
+      td.parts += defeatedEnemies.reduce((total, enemy) => total + (enemy.partsDrop || 0), 0);
       const before = td.enemies.length;
       td.enemies = td.enemies.filter(enemy => enemy.hp > 0);
       td.kills += before - td.enemies.length;
@@ -272,7 +290,7 @@
       td.enemyShots = td.enemyShots.filter(shot => shot.life !== 0);
       if (td.treeHealth <= 0) { endTowerDefense(); return; }
       if (td.toSpawn === 0 && td.enemies.length === 0) {
-        if (!td.waveRewarded) { treeGrowth[activeTree] += td.wave; td.treeHealth = Math.min(defenseMaxHealth(), td.treeHealth + defenseUpgrades.repair * 12); td.waveRewarded = true; td.waiting = true; }
+        if (!td.waveRewarded) { treeGrowth[activeTree] += td.wave; td.salvage += defenseUpgrades.generator * relicBonuses.power * 3; td.treeHealth = Math.min(defenseMaxHealth(), td.treeHealth + defenseUpgrades.repair * 12); td.waveRewarded = true; td.waiting = true; }
       }
     }
     function triggerDefenseBurst() {
@@ -316,21 +334,45 @@
         if (y > 155 && y < 200 && x > 600 && x < 860) { setting.aim = ['closest', 'ground', 'ranged', 'tank'][Math.floor((x - 600) / 65)]; return; }
         if (y > 225 && y < 270 && x > 600 && x < 840) {
           const type = ['acorn', 'rapid', 'cannon'][Math.floor((x - 600) / 80)], cost = TURRET_TYPE_COSTS[type];
-          if (type && setting.type !== type && treeGrowth[activeTree] >= cost.material && totalMinerals >= cost.minerals && totalWater >= cost.water) {
-            treeGrowth[activeTree] -= cost.material; totalMinerals -= cost.minerals; totalWater -= cost.water; setting.type = type; setting.invested = (setting.invested || 0) + cost.material; setting.investedMinerals = (setting.investedMinerals || 0) + cost.minerals; setting.investedWater = (setting.investedWater || 0) + cost.water;
+          if (type && setting.type !== type && td.salvage >= cost.salvage && td.parts >= cost.parts) {
+            td.salvage -= cost.salvage; td.parts -= cost.parts; setting.type = type; setting.investedSalvage = (setting.investedSalvage || 0) + cost.salvage;
+          }
+          return;
+        }
+        if (advancedTurretUnlocked() && y > 282 && y < 325 && x > 600 && x < 840) {
+          const type = x < 716 ? 'pulse' : 'lancer';
+          const unlocked = type === 'pulse' ? relicBonuses.weaponPulse > 0 : relicBonuses.weaponLancer > 0;
+          const cost = TURRET_TYPE_COSTS[type];
+          if (unlocked && setting.type !== type && td.salvage >= cost.salvage && td.parts >= cost.parts) {
+            td.salvage -= cost.salvage; td.parts -= cost.parts; setting.type = type; setting.investedSalvage = (setting.investedSalvage || 0) + cost.salvage;
           }
           return;
         }
         if (y > 282 && y < 325 && x > 620 && x < 840 && (setting.type === 'rapid' || setting.type === 'cannon')) {
           const type = setting.type === 'rapid' ? 'rapidPlus' : 'cannonPlus', cost = TURRET_TYPE_COSTS[type];
-          if (treeGrowth[activeTree] >= cost.material && totalMinerals >= cost.minerals && totalWater >= cost.water) {
-            treeGrowth[activeTree] -= cost.material; totalMinerals -= cost.minerals; totalWater -= cost.water; setting.type = type; setting.invested = (setting.invested || 0) + cost.material; setting.investedMinerals = (setting.investedMinerals || 0) + cost.minerals; setting.investedWater = (setting.investedWater || 0) + cost.water;
+          if (td.salvage >= cost.salvage && td.parts >= cost.parts) {
+            td.salvage -= cost.salvage; td.parts -= cost.parts; setting.type = type; setting.investedSalvage = (setting.investedSalvage || 0) + cost.salvage;
           }
           return;
         }
-        if (y > 332 && y < 365 && x > 650 && x < 810 && setting.type !== 'acorn') {
-          treeGrowth[activeTree] += setting.invested || 0; totalMinerals += setting.investedMinerals || 0; totalWater += setting.investedWater || 0;
-          setting.type = 'acorn'; setting.invested = 0; setting.investedMinerals = 0; setting.investedWater = 0; return;
+        if (y > 332 && y < 375 && x > 600 && x < 840) {
+          const type = x < 720 ? 'arc' : 'rocket';
+          const unlocked = type === 'arc' ? relicBonuses.weaponArc > 0 : relicBonuses.weaponRocket > 0;
+          const cost = TURRET_TYPE_COSTS[type];
+          if (unlocked && setting.type !== type && td.salvage >= cost.salvage && td.parts >= cost.parts) { td.salvage -= cost.salvage; td.parts -= cost.parts; setting.type = type; setting.investedSalvage = (setting.investedSalvage || 0) + cost.salvage; }
+          return;
+        }
+        if (y > 378 && y < 421 && x > 600 && x < 840) {
+          const type = x < 720 ? 'pulse' : 'lancer';
+          const unlocked = type === 'pulse' ? relicBonuses.weaponPulse > 0 : relicBonuses.weaponLancer > 0;
+          const cost = TURRET_TYPE_COSTS[type];
+          if (unlocked && setting.type !== type && td.salvage >= cost.salvage && td.parts >= cost.parts) { td.salvage -= cost.salvage; td.parts -= cost.parts; setting.type = type; setting.investedSalvage = (setting.investedSalvage || 0) + cost.salvage; }
+          return;
+        }
+        if (y > 430 && y < 463 && x > 620 && x < 780) {
+          const cost = turretUpgradeCost((setting.level || 0));
+          if (td.parts >= cost.parts) { td.parts -= cost.parts; setting.level = (setting.level || 0) + 1; }
+          return;
         }
         return;
       }
@@ -349,19 +391,20 @@
           return;
         }
         if (x > W / 2 - 95 && x < W / 2 + 95 && y > 500 && y < 550) { td.techOpen = false; return; }
-        const keys = td.techPage === 'root' ? Object.keys(TECH_TREES[activeTree]) : ['firepower', 'attackSpeed', 'turrets', 'armor', 'repair'];
-        const cardStart = td.techPage === 'root' ? 115 : 85, cardSpacing = td.techPage === 'root' ? 235 : 140, cardWidth = td.techPage === 'root' ? 200 : 130;
+        const keys = td.techPage === 'root' ? Object.keys(TECH_TREES[activeTree]) : ['firepower', 'attackSpeed', 'turrets', 'armor', 'repair', 'generator'];
+        const cardStart = td.techPage === 'root' ? 115 : 70, cardSpacing = td.techPage === 'root' ? 235 : 122, cardWidth = td.techPage === 'root' ? 200 : 112;
         const index = Math.floor((x - cardStart) / cardSpacing), key = keys[index];
         const upgradeSet = td.techPage === 'root' ? upgrades[activeTree] : defenseUpgrades;
         if (key && x < cardStart + cardWidth + index * cardSpacing && y > 270 && y < 450) {
           const level = upgradeSet[key];
           const defenseCost = defenseUpgradeCost(level);
           const rootCost = rootUpgradeCost(level);
-          const materialCost = td.techPage === 'root' ? rootCost.material : defenseCost.material;
-          const mineralCost = td.techPage === 'root' ? rootCost.minerals : defenseCost.minerals;
-          const waterCost = td.techPage === 'root' ? rootCost.water : defenseCost.water;
-          if (treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost) {
-            treeGrowth[activeTree] -= materialCost; totalMinerals -= mineralCost; totalWater -= waterCost; upgradeSet[key]++;
+          const canBuyRoot = td.techPage === 'root' && treeGrowth[activeTree] >= rootCost.material && totalMinerals >= rootCost.minerals && totalWater >= rootCost.water;
+          const canBuyDefense = td.techPage === 'defense' && td.salvage >= defenseCost.salvage && (key !== 'generator' || relicBonuses.power > 0);
+          if (canBuyRoot || canBuyDefense) {
+            if (td.techPage === 'root') { treeGrowth[activeTree] -= rootCost.material; totalMinerals -= rootCost.minerals; totalWater -= rootCost.water; }
+            else td.salvage -= defenseCost.salvage;
+            upgradeSet[key]++;
             if (key === 'armor') td.treeHealth += 20;
             if (td.techPage === 'root' && key === 'vitality') td.treeHealth += TECH_TREES[activeTree].vitality.amount;
           }
@@ -485,12 +528,29 @@
     function chooseRelic(x, y) {
       if (!relicChoice || y < 345 || y > 485) return;
       const index = Math.floor((x - 105) / 175);
-      const choice = ['breaker', 'water', 'tdPower', 'tdSpeed'][index];
+      const choice = relicChoice.options?.[index]?.key;
       if (!choice || x > 265 + index * 175) return;
       relicBonuses[choice]++;
       claimedRelics.add(relicChoice.meters);
-      health = Math.min(maxHealth(), health + 15);
+      health = Math.min(maxHealth(), health + (choice === 'vitality' ? 30 : choice === 'resourceGenerator' ? 8 : 15));
       relicChoice = null;
+    }
+    function randomRelicOptions() {
+      const pool = [
+        { key: 'breaker', title: 'RELIC DRILL', detail: 'Tunnel through all walls', color: '#d9b56c' },
+        { key: 'vitality', title: 'ANCIENT BARK', detail: '+30 maximum health', color: '#c98a55' },
+        { key: 'water', title: 'SPRING HEART', detail: '+8 water healing', color: '#69c7e2' },
+        { key: 'speed', title: 'WIND ROOT', detail: '+25% root speed', color: '#b5d66c' },
+        { key: 'tdPower', title: 'TURRET CORE', detail: '+8 damage, +30 TD health', color: '#e1845d' },
+        { key: 'tdSpeed', title: 'RAPID RELAY', detail: 'Faster TD firing', color: '#b5d66c' },
+        { key: 'power', title: 'POWER CORE', detail: 'Powers Salvage Generators', color: '#f0d56c' },
+        { key: 'resourceGenerator', title: 'PARTS LOOM', detail: 'Generates turret parts over time', color: '#8de091' },
+        { key: 'weaponArc', title: 'ARC SCHEMATIC', detail: 'Unlocks Arc Coil turrets', color: '#72e6ff' },
+        { key: 'weaponRocket', title: 'ROCKET SCHEMATIC', detail: 'Unlocks Rocket turrets', color: '#ff9b62' },
+        { key: 'weaponPulse', title: 'PULSE FORGE', detail: 'Unlocks Pulse turrets', color: '#7de7ff' },
+        { key: 'weaponLancer', title: 'LANCER CORE', detail: 'Unlocks Lancer turrets', color: '#f2c65b' }
+      ];
+      return pool.sort(() => Math.random() - .5).slice(0, 4);
     }
 
     function update() {
@@ -506,7 +566,7 @@
       root.angle = Math.atan2(dy, dx);
       const oldX = root.x, oldY = root.y;
       const movementMultiplier = performance.now() < slowUntil ? .42 : performance.now() < boostUntil ? oilSpeedMultiplier() : 1;
-      const step = Math.min(root.speed * movementMultiplier, d);
+      const step = Math.min(root.speed * movementMultiplier * (1 + relicBonuses.speed * .25), d);
       // Resolve each axis separately so a wall stops digging downward, but never traps sideways movement.
       const nextX = Math.max(root.radius, Math.min(W - root.radius, oldX + dx / d * step));
       if (!hitsObstacle(nextX, oldY)) root.x = nextX;
@@ -524,7 +584,7 @@
 
       for (const relic of relics) {
         if (!relic.claimed && Math.hypot(root.x - relic.x, root.y - relic.y) < root.radius + relic.r) {
-          relic.tunneled = true; relic.claimed = true; relicChoice = relic; return;
+          relic.tunneled = true; relic.claimed = true; relic.options = randomRelicOptions(); relicChoice = relic; return;
         }
       }
 
@@ -585,12 +645,7 @@
     }
 
     function drawRelicChoice() {
-      const choices = [
-        { key: 'breaker', title: 'RELIC DRILL', detail: 'Tunnel through all walls', color: '#d9b56c' },
-        { key: 'water', title: 'SPRING HEART', detail: '+8 water healing', color: '#69c7e2' },
-        { key: 'tdPower', title: 'TURRET CORE', detail: '+8 damage, +30 TD health', color: '#e1845d' },
-        { key: 'tdSpeed', title: 'RAPID RELAY', detail: 'Faster TD firing', color: '#b5d66c' }
-      ];
+      const choices = relicChoice.options || [];
       ctx.fillStyle = 'rgba(5, 9, 13, .86)'; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(19, 29, 30, .98)'; ctx.fillRect(75, 180, 750, 350); ctx.strokeStyle = '#ead389'; ctx.lineWidth = 3; ctx.strokeRect(75, 180, 750, 350);
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText('RELIC UNEARTHED', W / 2, 230);
@@ -689,41 +744,49 @@
         { key: 'attackSpeed', title: 'RAPID FIRE', detail: 'faster attacks / level', color: '#e1c45e' },
         { key: 'turrets', title: 'TURRET GARDENS', detail: '+1 branch or ground turret / level', color: '#7aaec4' },
         { key: 'armor', title: 'BARK ARMOR', detail: '+20 tree defense health / level', color: '#91a766' },
-        { key: 'repair', title: 'SAP REPAIR', detail: '+12 health after each wave / level', color: '#e58d86' }
+        { key: 'repair', title: 'SAP REPAIR', detail: '+12 health after each wave / level', color: '#e58d86' },
+        { key: 'generator', title: 'SALVAGE GENERATOR', detail: relicBonuses.power > 0 ? '+3 salvage per round / level' : 'Requires Power Core relic', color: '#b9d568' }
       ];
       const rootBranches = Object.entries(TECH_TREES[activeTree]).map(([key, branch]) => ({ key, ...branch }));
       const rootPage = td.techPage === 'root', branches = rootPage ? rootBranches : defenseBranches, upgradeSet = rootPage ? upgrades[activeTree] : defenseUpgrades;
       ctx.fillStyle = 'rgba(8, 18, 15, .97)'; ctx.fillRect(70, 90, 760, 480); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(70, 90, 760, 480);
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText(rootPage ? 'ROOT UPGRADES' : 'TREE DEFENSE UPGRADES', W / 2, 132);
-      ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Uses ' + treeGrowthName() + ', minerals, and water', W / 2, 158);
+      ctx.font = '14px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText(rootPage ? 'Uses ' + treeGrowthName() + ', minerals, and water' : 'Uses enemy Salvage: ' + td.salvage, W / 2, 158);
       [[220, 'ROOT UPGRADES', 'root'], [460, 'DEFENSE UPGRADES', 'defense']].forEach(([x, label, page]) => { ctx.fillStyle = td.techPage === page ? '#4b7a3d' : '#37473a'; ctx.fillRect(x, 170, 220, 40); ctx.strokeStyle = '#d8c58d'; ctx.lineWidth = 2; ctx.strokeRect(x, 170, 220, 40); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 13px system-ui'; ctx.fillText(label, x + 110, 195); });
       branches.forEach((branch, index) => {
-        const cardWidth = rootPage ? 200 : 130, cardSpacing = rootPage ? 235 : 140, bx = (rootPage ? 115 : 85) + index * cardSpacing, by = 270, level = upgradeSet[branch.key];
+        const cardWidth = rootPage ? 200 : 112, cardSpacing = rootPage ? 235 : 122, bx = (rootPage ? 115 : 70) + index * cardSpacing, by = 270, level = upgradeSet[branch.key];
         const defenseCost = defenseUpgradeCost(level);
         const rootCost = rootUpgradeCost(level);
-        const materialCost = rootPage ? rootCost.material : defenseCost.material, mineralCost = rootPage ? rootCost.minerals : defenseCost.minerals, waterCost = rootPage ? rootCost.water : defenseCost.water;
+        const materialCost = rootCost.material, mineralCost = rootCost.minerals, waterCost = rootCost.water;
         ctx.fillStyle = '#1c3227'; ctx.fillRect(bx, by, cardWidth, 180); ctx.strokeStyle = branch.color; ctx.lineWidth = 2; ctx.strokeRect(bx, by, cardWidth, 180);
         ctx.fillStyle = branch.color; ctx.font = 'bold ' + (rootPage ? 16 : 11) + 'px system-ui'; ctx.fillText(branch.title, bx + cardWidth / 2, by + 31);
         ctx.fillStyle = '#e0ead7'; ctx.font = rootPage ? '13px system-ui' : '9px system-ui'; ctx.fillText(branch.detail, bx + cardWidth / 2, by + 58);
         ctx.fillStyle = branch.color; ctx.font = 'bold 18px system-ui'; ctx.fillText('LEVEL ' + level, bx + cardWidth / 2, by + 96);
-        const affordable = treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost;
+        const affordable = rootPage ? treeGrowth[activeTree] >= materialCost && totalMinerals >= mineralCost && totalWater >= waterCost : td.salvage >= defenseCost.salvage && (branch.key !== 'generator' || relicBonuses.power > 0);
         ctx.fillStyle = affordable ? '#4b7a3d' : '#3f4a40'; ctx.fillRect(bx + 12, by + 112, cardWidth - 24, 45); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(bx + 12, by + 112, cardWidth - 24, 45);
-        ctx.fillStyle = '#fff8df'; ctx.font = 'bold ' + (rootPage ? 10 : 7) + 'px system-ui'; ctx.fillText(materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W', bx + cardWidth / 2, by + 140);
+        ctx.fillStyle = '#fff8df'; ctx.font = 'bold ' + (rootPage ? 10 : 7) + 'px system-ui'; ctx.fillText(rootPage ? materialCost + ' ' + treeGrowthName().toUpperCase() + ' + ' + mineralCost + ' M + ' + waterCost + ' W' : (branch.key === 'generator' && relicBonuses.power <= 0 ? 'POWER CORE NEEDED' : defenseCost.salvage + ' SALVAGE'), bx + cardWidth / 2, by + 140);
       });
       ctx.fillStyle = '#555555'; ctx.fillRect(W / 2 - 95, 500, 190, 50); ctx.strokeStyle = '#d0d0d0'; ctx.strokeRect(W / 2 - 95, 500, 190, 50); ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px system-ui'; ctx.fillText('BACK TO WAVES', W / 2, 531); ctx.textAlign = 'start';
     }
 
     function drawTurretMenu() {
       const setting = td.turretSettings[td.selectedTurret] || { aim: 'closest', type: 'acorn' };
-      ctx.fillStyle = 'rgba(9, 16, 20, .96)'; ctx.fillRect(590, 95, 280, 280); ctx.strokeStyle = '#e5c77f'; ctx.lineWidth = 2; ctx.strokeRect(590, 95, 280, 280);
+      ctx.fillStyle = 'rgba(9, 16, 20, .96)'; ctx.fillRect(590, 95, 280, 390); ctx.strokeStyle = '#e5c77f'; ctx.lineWidth = 2; ctx.strokeRect(590, 95, 280, 390);
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 17px Georgia'; ctx.fillText('TURRET ' + (td.selectedTurret + 1), 730, 123);
       ctx.font = '13px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('AIM PRIORITY — FALLS BACK TO ALL', 730, 148);
       ['closest', 'ground', 'ranged', 'tank'].forEach((aim, index) => { const x = 600 + index * 65; ctx.fillStyle = setting.aim === aim ? '#4b7a3d' : '#39443b'; ctx.fillRect(x, 155, 60, 42); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(x, 155, 60, 42); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(aim.toUpperCase(), x + 30, 180); });
       ctx.font = '13px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('TURRET TYPE', 730, 218);
-      ['acorn', 'rapid', 'cannon'].forEach((type, index) => { const x = 600 + index * 80, cost = TURRET_TYPE_COSTS[type]; ctx.fillStyle = setting.type === type ? '#a16b3d' : '#39443b'; ctx.fillRect(x, 225, 75, 42); ctx.strokeStyle = '#f0d37e'; ctx.strokeRect(x, 225, 75, 42); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(type.toUpperCase(), x + 37, 244); ctx.font = '9px system-ui'; ctx.fillText(cost.material + '/' + cost.minerals + '/' + cost.water, x + 37, 259); });
-      ctx.fillStyle = '#dce7ce'; ctx.font = '10px system-ui'; ctx.fillText('Costs: tree material / mineral / water', 730, 278);
-      if (setting.type === 'rapid' || setting.type === 'cannon') { const type = setting.type === 'rapid' ? 'rapidPlus' : 'cannonPlus', cost = TURRET_TYPE_COSTS[type], label = setting.type === 'rapid' ? 'TRIPLE RAPID' : 'SIEGE CANNON'; ctx.fillStyle = '#4b6378'; ctx.fillRect(620, 285, 220, 38); ctx.strokeStyle = '#b9d7e7'; ctx.strokeRect(620, 285, 220, 38); ctx.fillStyle = '#f4fbff'; ctx.font = 'bold 12px system-ui'; ctx.fillText(label + '  ' + cost.material + '/' + cost.minerals + '/' + cost.water, 730, 309); }
-      if (setting.type !== 'acorn') { ctx.fillStyle = '#704947'; ctx.fillRect(650, 333, 160, 28); ctx.strokeStyle = '#f0b3a7'; ctx.strokeRect(650, 333, 160, 28); ctx.fillStyle = '#fff3e8'; ctx.font = 'bold 11px system-ui'; ctx.fillText('REFUND & REVERT', 730, 352); }
+      ['acorn', 'rapid', 'cannon'].forEach((type, index) => { const x = 600 + index * 80, cost = TURRET_TYPE_COSTS[type]; ctx.fillStyle = setting.type === type ? '#a16b3d' : '#39443b'; ctx.fillRect(x, 225, 75, 42); ctx.strokeStyle = '#f0d37e'; ctx.strokeRect(x, 225, 75, 42); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(type.toUpperCase(), x + 37, 244); ctx.font = '9px system-ui'; ctx.fillText(cost.salvage + ' S', x + 37, 259); });
+      ctx.fillStyle = '#dce7ce'; ctx.font = '10px system-ui'; ctx.fillText('Costs: enemy Salvage + turret parts', 730, 278);
+      if (setting.type === 'rapid' || setting.type === 'cannon') { const type = setting.type === 'rapid' ? 'rapidPlus' : 'cannonPlus', cost = TURRET_TYPE_COSTS[type], label = setting.type === 'rapid' ? 'TRIPLE RAPID' : 'SIEGE CANNON'; ctx.fillStyle = '#4b6378'; ctx.fillRect(620, 285, 220, 38); ctx.strokeStyle = '#b9d7e7'; ctx.strokeRect(620, 285, 220, 38); ctx.fillStyle = '#f4fbff'; ctx.font = 'bold 12px system-ui'; ctx.fillText(label + '  ' + cost.salvage + ' S / ' + cost.parts + ' P', 730, 309); }
+      const arcButtons = [[relicBonuses.weaponArc > 0, 'arc', 'ARC COIL', 600, 332], [relicBonuses.weaponRocket > 0, 'rocket', 'ROCKET', 722, 332], [relicBonuses.weaponPulse > 0, 'pulse', 'PULSE', 600, 378], [relicBonuses.weaponLancer > 0, 'lancer', 'LANCER', 722, 378]];
+      arcButtons.forEach(([unlocked, type, label, x, y]) => {
+        if (!unlocked) return;
+        const cost = TURRET_TYPE_COSTS[type];
+        ctx.fillStyle = '#405d70'; ctx.fillRect(x, y, 116, 38); ctx.strokeStyle = '#88dced'; ctx.strokeRect(x, y, 116, 38); ctx.fillStyle = '#f4fbff'; ctx.font = 'bold 10px system-ui'; ctx.fillText(label + ' ' + cost.salvage + ' S / ' + cost.parts + ' P', x + 58, y + 23);
+      });
+      ctx.fillStyle = '#704947'; ctx.fillRect(650, 432, 160, 28); ctx.strokeStyle = '#f0b3a7'; ctx.strokeRect(650, 432, 160, 28); ctx.fillStyle = '#fff3e8'; ctx.font = 'bold 11px system-ui'; ctx.fillText('REFUND & REVERT', 730, 451);
+      ctx.fillStyle = '#4b7a3d'; ctx.fillRect(650, 468, 160, 28); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(650, 468, 160, 28); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 11px system-ui'; ctx.fillText('UPGRADE +1  ' + (setting.level || 0) + ' -> ' + ((setting.level || 0) + 1) + '  ' + turretUpgradeCost(setting.level || 0).parts + ' P', 730, 487);
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px system-ui'; ctx.fillText('×', 850, 118); ctx.textAlign = 'start';
     }
 
@@ -781,9 +844,11 @@
       ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 24px Georgia'; ctx.fillText('TREE DEFENSE', 34, 48);
       ctx.font = '15px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Wave  ' + td.wave + '     Enemies  ' + td.enemies.length + '     ' + (td.preWave ? 'READY' : td.spawnPattern.toUpperCase()) + '     ' + timeOfDay.toUpperCase(), 34, 76);
       ctx.fillText('Defending with ' + treeGrowthName(), 34, 101);
+      ctx.fillStyle = '#8de091'; ctx.fillText('Parts  ' + td.parts, 305, 100);
       const defenseHealthCap = defenseMaxHealth();
       ctx.fillStyle = '#3b2020'; ctx.fillRect(305, 22, 220, 18); ctx.fillStyle = '#79c96d'; ctx.fillRect(305, 22, 220 * td.treeHealth / defenseHealthCap, 18); ctx.strokeStyle = '#f7e9c8'; ctx.strokeRect(305, 22, 220, 18);
       ctx.fillStyle = '#f8efcf'; ctx.font = '14px system-ui'; ctx.fillText('TREE HEALTH', 305, 58);
+      ctx.fillStyle = '#9ad3df'; ctx.fillText('SALVAGE  ' + td.salvage, 305, 78);
       const burstReady = now >= td.burstReady; ctx.fillStyle = burstReady ? '#bf8249' : '#4b4a45'; ctx.fillRect(W - 230, 28, 200, 46); ctx.strokeStyle = '#e5c77f'; ctx.strokeRect(W - 230, 28, 200, 46);
       ctx.fillStyle = '#fff4d5'; ctx.font = 'bold 14px system-ui'; ctx.textAlign = 'center'; ctx.fillText(burstReady ? 'CLICK: DEFENSE BURST' : 'BURST RECHARGING', W - 130, 57); ctx.textAlign = 'start';
       ctx.fillStyle = td.placingRunner ? '#6f9c54' : '#3f6141'; ctx.fillRect(W - 230, 85, 200, 40); ctx.strokeStyle = '#cde7a8'; ctx.strokeRect(W - 230, 85, 200, 40); ctx.textAlign = 'center'; ctx.fillStyle = '#f4ffe0'; ctx.font = 'bold 12px system-ui'; ctx.fillText(td.placingRunner ? 'CLICK LEFT OR RIGHT GROUND' : 'RUNNER: 2 / 2 / 2', W - 130, 110); ctx.textAlign = 'start';
