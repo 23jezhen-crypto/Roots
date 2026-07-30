@@ -21,7 +21,7 @@
     const W = canvas.width, H = canvas.height;
     const mouse = { x: W / 2, y: H * .58 };
     const root = { x: W / 2, y: -7, radius: 9, speed: 4.2, angle: Math.PI / 2, trail: [] };
-    const APPLE_SEED_DEPTH = 2000, PEAR_TREE_DEPTH = 5000, SAPLING_COST = 1, GROW_STAGE_COST = 25, FULL_GROWTH_STAGE = 4;
+    const APPLE_SEED_DEPTH = 2000, PEAR_TREE_DEPTH = 5000, RELIC_DEPTH = 500, SAPLING_COST = 1, GROW_STAGE_COST = 25, FULL_GROWTH_STAGE = 4;
     const PEAR_GROWTH_STAGE_COST = 40, PEAR_FULL_GROWTH_STAGE = 4;
     const TREE_MATERIAL_COSTS = [5, 10, 15], UPGRADE_MINERAL_COSTS = [3, 5, 7], UPGRADE_WATER_COSTS = [3, 5, 7], MAX_UPGRADE_LEVEL = TREE_MATERIAL_COSTS.length;
     const TECH_TREES = {
@@ -47,8 +47,10 @@
     const defenseUpgrades = { firepower: 0, attackSpeed: 0, turrets: 0, armor: 0, repair: 0 };
     const RUNNER_COST = { material: 2, minerals: 2, water: 2 };
     const TURRET_TYPE_COSTS = { acorn: { material: 0, minerals: 0, water: 0 }, rapid: { material: 4, minerals: 3, water: 3 }, cannon: { material: 6, minerals: 5, water: 5 } };
-    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootY: 0, returnDepth: 0 };
-    let items = [], stones = [], obstacles = [], particles = [];
+    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false };
+    const relicBonuses = { breaker: 0, water: 0, tdPower: 0, tdSpeed: 0 };
+    const claimedRelics = new Set();
+    let items = [], stones = [], obstacles = [], particles = [], relics = [], relicChoice = null;
 
     function rand(a, b) { return a + Math.random() * (b - a); }
     function worldY(y) { return y - cameraY; }
@@ -68,16 +70,16 @@
       return light < .52 ? blendColor('352015', '1d1d1d', light / .52) : blendColor('1d1d1d', '030405', (light - .52) / .48);
     }
     function maxHealth(tree = activeTree) { return (tree === 'oak' ? 120 : 100) + (upgrades[tree].vitality || 0) * (TECH_TREES[tree].vitality?.amount || 0); }
-    function waterHealing(tree = activeTree) { return (tree === 'pear' ? 6 : 12) + upgrades[tree].water * TECH_TREES[tree].water.amount; }
+    function waterHealing(tree = activeTree) { return (tree === 'pear' ? 6 : 12) + upgrades[tree].water * TECH_TREES[tree].water.amount + relicBonuses.water * 8; }
     function poisonDamage(tree = activeTree) { return Math.max(1, (tree === 'apple' ? 4 : tree === 'pear' ? 16 : 12) - upgrades[tree].poison * TECH_TREES[tree].poison.amount); }
     function oilHealing() { return 10 + upgrades.pear.oil * TECH_TREES.pear.oil.amount; }
     function oilSpeedMultiplier() { return 1.6 + upgrades.pear.oil * .1; }
     function treeGrowthName(tree = activeTree) { return tree === 'apple' ? 'apples' : tree === 'pear' ? 'pears' : 'acorns'; }
     function defenseUpgradeCost(level) { return { material: 3 + level * 3, minerals: 2 + level * 2, water: 2 + level * 2 }; }
     function hasTreeChoice() { return treeLevel >= FULL_GROWTH_STAGE || pearTreeLevel >= PEAR_FULL_GROWTH_STAGE; }
-    function defenseMaxHealth() { return maxHealth() + defenseUpgrades.armor * 20 + (activeTree === 'oak' ? 40 : 0); }
-    function defenseShotDamage() { return (activeTree === 'apple' ? 25 : activeTree === 'pear' ? 19 : 16) + defenseUpgrades.firepower * 5; }
-    function defenseAttackCooldown(base, minimum) { return Math.max(minimum, base - upgrades[activeTree].water * 55 - defenseUpgrades.attackSpeed * 55 - (activeTree === 'pear' ? 160 : 0)); }
+    function defenseMaxHealth() { return maxHealth() + defenseUpgrades.armor * 20 + relicBonuses.tdPower * 30 + (activeTree === 'oak' ? 40 : 0); }
+    function defenseShotDamage() { return (activeTree === 'apple' ? 25 : activeTree === 'pear' ? 19 : 16) + defenseUpgrades.firepower * 5 + relicBonuses.tdPower * 8; }
+    function defenseAttackCooldown(base, minimum) { return Math.max(minimum, base - upgrades[activeTree].water * 55 - defenseUpgrades.attackSpeed * 55 - relicBonuses.tdSpeed * 100 - (activeTree === 'pear' ? 160 : 0)); }
     function rootUpgradeCost(level) { return { material: 5 + level * 5, minerals: 3 + level * 2, water: 3 + level * 2 }; }
     function runnerVision(side) { return 270 + td.runners.filter(runner => runner.side === side).length * 180; }
     function enemyVisible(enemy) { return Math.abs(enemy.x - W / 2) <= runnerVision(enemy.x < W / 2 ? -1 : 1); }
@@ -132,6 +134,11 @@
       const yReach = Math.abs(Math.sin(o.angle)) * o.length / 2 + o.r;
       return { left: o.x - xReach, right: o.x + xReach, top: o.y - yReach, bottom: o.y + yReach };
     }
+    function ensureRelicsThrough(depthMeters) {
+      for (let meters = RELIC_DEPTH; meters <= depthMeters; meters += RELIC_DEPTH) {
+        if (!relics.some(relic => relic.meters === meters)) relics.push({ meters, x: rand(120, W - 120), y: meters * 10, r: 42, tunneled: claimedRelics.has(meters), claimed: claimedRelics.has(meters) });
+      }
+    }
     function overlapsObstacle(candidate) {
       const a = obstacleBounds(candidate), gap = 20;
       return obstacles.some(o => {
@@ -143,6 +150,7 @@
       cameraY = -220; depth = 0; water = 0; minerals = 0; health = maxHealth(); slowUntil = 0; boostUntil = 0; paused = false;
       root.x = W / 2; root.y = -7; root.angle = Math.PI / 2; root.trail = [];
       items = []; stones = []; obstacles = []; particles = [];
+      relics = []; ensureRelicsThrough(10000); relicChoice = null;
       for (let y = 30; y < 2600; y += 500) addChunk(y);
     }
     function returnToTreeAfterDeath() {
@@ -150,8 +158,9 @@
       lastRunScore = depth;
       lastGrowthEarned = Math.max(1, Math.floor(lastRunScore / 100));
       treeGrowth[activeTree] += lastGrowthEarned;
-      td.returnRootY = root.y;
+      td.returnRootX = root.x; td.returnRootY = root.y;
       td.returnDepth = depth;
+      td.returnTrail = root.trail.map(point => ({ ...point }));
       resetWorld(); startTowerDefense();
     }
     function startTowerDefense() {
@@ -239,7 +248,7 @@
     }
     function descendFromDefense() {
       defenseCampaignWave = td.wave + 1; td.active = false; td.waiting = false; td.techOpen = false; started = true; gameOver = false;
-      health = maxHealth(); root.x = W / 2; root.y = td.returnRootY; root.trail = []; depth = td.returnDepth; cameraY = root.y - H * .58;
+      health = maxHealth(); root.x = td.returnRootX; root.y = td.returnRootY; root.trail = td.returnTrail.map(point => ({ ...point })); depth = td.returnDepth; cameraY = root.y - H * .58;
       while (stones.length && cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
     }
     function startNextDefenseWave() {
@@ -312,9 +321,13 @@
       const r = canvas.getBoundingClientRect();
       mouse.x = (e.clientX - r.left) * W / r.width;
       mouse.y = (e.clientY - r.top) * H / r.height;
+      if (td.active && td.dragging) {
+        td.viewOffset = clamp(td.viewOffset - (mouse.x - td.dragLastX), -380, 380);
+        td.dragLastX = mouse.x; td.wasDragged = true;
+      }
       hoveredTree = !started && !showUpgradeMenu && hasTreeChoice() ? menuTreeAt(mouse.x, mouse.y) : null;
     });
-    canvas.addEventListener('pointerleave', () => { hoveredTree = null; });
+    canvas.addEventListener('pointerleave', () => { hoveredTree = null; td.dragging = false; });
     canvas.addEventListener('wheel', e => {
       if (!td.active || td.techOpen || td.turretMenu) return;
       e.preventDefault();
@@ -326,6 +339,7 @@
       const r = canvas.getBoundingClientRect();
       const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
       if (td.active) {
+        if (td.wasDragged) { td.wasDragged = false; return; }
         const turrets = defenseTurrets();
         const turretIndex = turrets.findIndex(turret => Math.hypot(turret.x - (x + td.viewOffset), turret.y - y) < 32);
         if (turretIndex >= 0) { td.selectedTurret = turretIndex; td.turretMenu = true; td.placingRunner = false; }
@@ -337,8 +351,10 @@
     canvas.addEventListener('pointerdown', e => {
       const r = canvas.getBoundingClientRect();
       const x = (e.clientX - r.left) * W / r.width, y = (e.clientY - r.top) * H / r.height;
+      if (td.active && e.button === 2) { td.dragging = true; td.dragLastX = x; td.wasDragged = false; canvas.setPointerCapture?.(e.pointerId); return; }
       if (e.button !== 0) return;
       if (td.active) { handleDefenseClick(x, y); canvas.focus(); return; }
+      if (relicChoice) { chooseRelic(x, y); canvas.focus(); return; }
       pinnedTreeStats = null;
       if (started && x > W - 110 && x < W - 20 && y > 16 && y < 48) { paused = !paused; canvas.focus(); return; }
       if (paused) {
@@ -365,11 +381,13 @@
       }
       canvas.focus();
     });
+    canvas.addEventListener('pointerup', e => { if (e.button === 2) { td.dragging = false; canvas.releasePointerCapture?.(e.pointerId); } });
     window.addEventListener('keydown', e => {
       if ((e.key === 'Escape' || e.key.toLowerCase() === 'p') && started) { paused = !paused; e.preventDefault(); }
     });
 
     function hitsObstacle(x, y) {
+      if (relicBonuses.breaker > 0) return false;
       return obstacles.some(o => {
         if (o.type === 'tunnel') {
           const cos = Math.cos(o.angle), sin = Math.sin(o.angle);
@@ -385,9 +403,21 @@
       });
     }
 
+    function chooseRelic(x, y) {
+      if (!relicChoice || y < 345 || y > 485) return;
+      const index = Math.floor((x - 105) / 175);
+      const choice = ['breaker', 'water', 'tdPower', 'tdSpeed'][index];
+      if (!choice || x > 265 + index * 175) return;
+      relicBonuses[choice]++;
+      claimedRelics.add(relicChoice.meters);
+      health = Math.min(maxHealth(), health + 15);
+      relicChoice = null;
+    }
+
     function update() {
       if (td.active) { updateTowerDefense(); return; }
       if (!started || paused) return;
+      if (relicChoice) return;
       pulse += .035;
       // The root always grows down; mouse controls its underground path.
       const targetX = mouse.x;
@@ -406,11 +436,18 @@
       root.trail.push({ x: root.x, y: root.y });
       if (root.y > cameraY + H * .58) cameraY += (root.y - (cameraY + H * .58)) * .04;
       depth = Math.max(depth, Math.floor(Math.max(0, root.y) * .10));
+      ensureRelicsThrough(depth + 1000);
       if (depth >= APPLE_SEED_DEPTH) seedUnlocked = true;
       if (depth >= PEAR_TREE_DEPTH) pearUnlocked = true;
-      health = Math.max(0, health - .12 - Math.max(0, root.y - oldY) * .06);
+      health = Math.max(0, health - .17 - Math.max(0, root.y - oldY) * .08);
       if (health <= 0) { returnToTreeAfterDeath(); return; }
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
+
+      for (const relic of relics) {
+        if (!relic.claimed && Math.hypot(root.x - relic.x, root.y - relic.y) < root.radius + relic.r) {
+          relic.tunneled = true; relic.claimed = true; relicChoice = relic; return;
+        }
+      }
 
       for (const item of items) {
         if (item.taken) continue;
@@ -466,6 +503,27 @@
           ctx.fillStyle = '#755137'; ctx.fillRect(x - 6, y - 5, 12, 4);
         }
       }
+    }
+
+    function drawRelicChoice() {
+      const choices = [
+        { key: 'breaker', title: 'RELIC DRILL', detail: 'Tunnel through all walls', color: '#d9b56c' },
+        { key: 'water', title: 'SPRING HEART', detail: '+8 water healing', color: '#69c7e2' },
+        { key: 'tdPower', title: 'TURRET CORE', detail: '+8 damage, +30 TD health', color: '#e1845d' },
+        { key: 'tdSpeed', title: 'RAPID RELAY', detail: 'Faster TD firing', color: '#b5d66c' }
+      ];
+      ctx.fillStyle = 'rgba(5, 9, 13, .86)'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(19, 29, 30, .98)'; ctx.fillRect(75, 180, 750, 350); ctx.strokeStyle = '#ead389'; ctx.lineWidth = 3; ctx.strokeRect(75, 180, 750, 350);
+      ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 31px Georgia'; ctx.fillText('RELIC UNEARTHED', W / 2, 230);
+      ctx.font = '15px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('Choose one blessing for this root run', W / 2, 258);
+      choices.forEach((choice, index) => {
+        const x = 105 + index * 175;
+        ctx.fillStyle = '#213a31'; ctx.fillRect(x, 345, 160, 140); ctx.strokeStyle = choice.color; ctx.lineWidth = 2; ctx.strokeRect(x, 345, 160, 140);
+        ctx.fillStyle = choice.color; ctx.font = 'bold 13px system-ui'; ctx.fillText(choice.title, x + 80, 383);
+        ctx.fillStyle = '#f2f0d9'; ctx.font = '11px system-ui'; ctx.fillText(choice.detail, x + 80, 418);
+        ctx.fillStyle = '#4b7a3d'; ctx.fillRect(x + 25, 438, 110, 30); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 12px system-ui'; ctx.fillText('CHOOSE', x + 80, 459);
+      });
+      ctx.textAlign = 'start';
     }
 
     function drawDeathTreeSummary() {
@@ -710,6 +768,15 @@
         }
         ctx.restore();
       }
+      for (const relic of relics) {
+        const y = worldY(relic.y); if (y < -70 || y > H + 70) continue;
+        ctx.save(); ctx.translate(relic.x, y); ctx.shadowColor = relic.claimed ? '#7a9f91' : '#e8d37c'; ctx.shadowBlur = relic.claimed ? 5 : 18;
+        ctx.fillStyle = relic.claimed ? '#31443c' : '#6b5b38'; ctx.beginPath(); ctx.arc(0, 0, relic.r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = relic.claimed ? '#a5c2ad' : '#ffef9a'; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(0, 0, relic.r - 6, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#d9c470'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(18, 0); ctx.moveTo(0, -18); ctx.lineTo(0, 18); ctx.stroke();
+        if (!relic.claimed) { ctx.fillStyle = '#fff3b0'; ctx.font = 'bold 12px system-ui'; ctx.textAlign = 'center'; ctx.fillText('RELIC', 0, -55); ctx.textAlign = 'start'; }
+        ctx.restore();
+      }
       for (const item of items) {
         const y = worldY(item.y); if (item.taken || y < -30 || y > H + 30) continue;
         const bob = Math.sin(pulse + item.wobble) * 2;
@@ -821,6 +888,7 @@
       }
       const statsTree = hoveredTree || pinnedTreeStats;
       if (!started && statsTree) drawTreeStats(statsTree);
+      if (relicChoice) drawRelicChoice();
     }
     function frame() { update(); draw(); requestAnimationFrame(frame); }
     frame();
