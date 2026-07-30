@@ -107,9 +107,11 @@
       for (let i = 0; i < 10; i++) {
         let resource;
         for (let attempt = 0; attempt < 24; attempt++) {
-          const waterChance = Math.max(.08, .43 - fromY / 18000);
+          const meters = fromY / 10;
+          const deepWaterWindow = meters >= 5000 && Math.floor(fromY / H) % 2 === 1;
+          const waterChance = meters >= 5000 ? (deepWaterWindow ? 0 : .18) : Math.max(.08, .34 - meters / 22000);
           const roll = Math.random();
-          const type = roll < waterChance ? 'water' : roll < waterChance + .12 ? 'poison' : roll < waterChance + .24 ? 'oil' : 'mineral';
+          const type = roll < waterChance ? 'water' : roll < waterChance + .24 ? 'poison' : roll < waterChance + .48 ? 'oil' : 'mineral';
           const candidate = { x: rand(42, W - 42), y: fromY + rand(30, 510), type, r: type === 'mineral' ? rand(7, 11) : rand(30, 44), taken: false, wobble: rand(0, 6.28), harvestAt: 0, shape: Math.floor(rand(0, 4)), tunnels: [] };
           const overlapsResource = items.some(item => Math.hypot(candidate.x - item.x, candidate.y - item.y) < candidate.r + item.r + 20);
           if (!overlapsResource) { resource = candidate; break; }
