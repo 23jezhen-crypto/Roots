@@ -99,7 +99,7 @@
       return index >= 0 && index < keys.length && x < 315 + index * 235 ? keys[index] : null;
     }
     function addChunk(fromY) {
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 10; i++) {
         let resource;
         for (let attempt = 0; attempt < 24; attempt++) {
           const roll = Math.random();
@@ -472,7 +472,7 @@
       ensureRelicsThrough(depth + 1000);
       if (depth >= APPLE_SEED_DEPTH) seedUnlocked = true;
       if (depth >= PEAR_TREE_DEPTH) pearUnlocked = true;
-      health = Math.max(0, health - .17 - Math.max(0, root.y - oldY) * .08);
+      health = Math.max(0, health - .14 - Math.max(0, root.y - oldY) * .065);
       if (health <= 0) { returnToTreeAfterDeath(); return; }
       while (cameraY + H + 900 > stones[stones.length - 1].y) addChunk(stones[stones.length - 1].y + 20);
 
