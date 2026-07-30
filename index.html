@@ -48,7 +48,7 @@
     const RUNNER_COST = { material: 2, minerals: 2, water: 2 };
     const runnerGrowCost = level => ({ material: 1 + level, minerals: 1 + level, water: 1 + level });
     const TURRET_TYPE_COSTS = { acorn: { material: 0, minerals: 0, water: 0 }, rapid: { material: 4, minerals: 3, water: 3 }, cannon: { material: 6, minerals: 5, water: 5 } };
-    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, preWave: false, spawnPattern: 'both', spawnCount: 0, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false };
+    const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, preWave: false, spawnPattern: 'both', spawnCount: 0, timeLight: 1, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false };
     const relicBonuses = { breaker: 0, water: 0, tdPower: 0, tdSpeed: 0 };
     const claimedRelics = new Set();
     let items = [], stones = [], obstacles = [], particles = [], relics = [], relicChoice = null;
@@ -176,7 +176,7 @@
     function startTowerDefense() {
       const now = performance.now();
       td.active = true; td.wave = defenseCampaignWave; td.toSpawn = 0; td.nextSpawn = now + 600; td.nextAutoShot = now; td.nextManualShot = now;
-      td.burstReady = now; td.treeHealth = defenseMaxHealth(); td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = true; td.preWave = true; td.spawnPattern = 'both'; td.spawnCount = 0; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false; td.runners = []; td.placingRunner = false; td.turretMenu = false; td.turretSettings = []; td.viewOffset = 0;
+      td.burstReady = now; td.treeHealth = defenseMaxHealth(); td.enemies = []; td.shots = []; td.enemyShots = []; td.kills = 0; td.waveRewarded = false; td.waiting = true; td.preWave = true; td.spawnPattern = 'both'; td.spawnCount = 0; td.timeLight = 1; td.techOpen = false; td.techPage = 'defense'; td.turretControlled = false; td.runners = []; td.placingRunner = false; td.turretMenu = false; td.turretSettings = []; td.viewOffset = 0;
       gameOver = false; started = false;
     }
     function endTowerDefense() {
@@ -185,19 +185,24 @@
     function spawnDefenseEnemy() {
       const fromLeft = td.spawnPattern === 'left' ? true : td.spawnPattern === 'right' ? false : td.spawnCount++ % 2 === 0;
       const night = defenseTimeOfDay() === 'night';
-      const roll = Math.random(), type = night ? (roll < .42 ? 'nightRaider' : roll < .76 ? 'moonWalker' : 'swarm') : (roll < .25 ? 'ground' : roll < .4 ? 'airship' : roll < .55 ? 'tank' : roll < .68 ? 'armoredCar' : roll < .79 ? 'walker' : roll < .86 ? 'swarm' : roll < .93 ? 'brute' : roll < .97 ? 'jet' : 'helicopter');
+      const roll = Math.random(), type = night ? (roll < .3 ? 'nightRaider' : roll < .55 ? 'moonWalker' : roll < .72 ? 'specterDrone' : roll < .88 ? 'siegeMech' : 'swarm') : (roll < .18 ? 'ground' : roll < .3 ? 'shieldTrooper' : roll < .42 ? 'airship' : roll < .52 ? 'tank' : roll < .62 ? 'armoredCar' : roll < .72 ? 'walker' : roll < .8 ? 'artillery' : roll < .87 ? 'gunship' : roll < .92 ? 'swarm' : roll < .96 ? 'brute' : roll < .98 ? 'jet' : 'helicopter');
       const stats = {
         ground: { hp: 26, hpScale: 7, speed: .48, r: 16, damage: 9, group: 'ground' },
-        airship: { hp: 38, hpScale: 8, speed: .25, r: 24, damage: 8, ranged: true, range: 300, group: 'ranged', altitude: [260, 340] },
+        shieldTrooper: { hp: 62, hpScale: 11, speed: .3, r: 18, damage: 11, group: 'ground' },
+        airship: { hp: 38, hpScale: 8, speed: .25, r: 24, damage: 4, ranged: true, range: 300, group: 'ranged', altitude: [260, 340] },
         tank: { hp: 72, hpScale: 14, speed: .23, r: 24, damage: 18, group: 'tank' },
         armoredCar: { hp: 52, hpScale: 11, speed: .5, r: 20, damage: 14, group: 'tank' },
         walker: { hp: 86, hpScale: 15, speed: .32, r: 25, damage: 20, group: 'tank' },
+        artillery: { hp: 54, hpScale: 10, speed: .22, r: 22, damage: 7, ranged: true, range: 390, group: 'ranged', altitude: [390, 440] },
+        gunship: { hp: 70, hpScale: 12, speed: .38, r: 25, damage: 6, ranged: true, range: 360, group: 'ranged', altitude: [210, 300] },
         swarm: { hp: 10, hpScale: 4, speed: .82, r: 10, damage: 5, group: 'ground' },
         brute: { hp: 108, hpScale: 18, speed: .18, r: 29, damage: 28, group: 'tank' },
-        nightRaider: { hp: 34, hpScale: 8, speed: .6, r: 16, damage: 10, ranged: true, range: 310, group: 'ranged' },
+        nightRaider: { hp: 34, hpScale: 8, speed: .6, r: 16, damage: 5, ranged: true, range: 310, group: 'ranged' },
         moonWalker: { hp: 92, hpScale: 16, speed: .3, r: 25, damage: 22, group: 'tank' },
-        jet: { hp: 28, hpScale: 7, speed: 1.1, r: 16, damage: 12, ranged: true, range: 430, group: 'ranged', altitude: [145, 230] },
-        helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 9, ranged: true, range: 345, group: 'ranged', altitude: [245, 340] }
+        specterDrone: { hp: 22, hpScale: 6, speed: .88, r: 12, damage: 4, ranged: true, range: 365, group: 'ranged', altitude: [210, 340] },
+        siegeMech: { hp: 128, hpScale: 20, speed: .16, r: 31, damage: 32, group: 'tank' },
+        jet: { hp: 28, hpScale: 7, speed: 1.1, r: 16, damage: 6, ranged: true, range: 430, group: 'ranged', altitude: [145, 230] },
+        helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 5, ranged: true, range: 345, group: 'ranged', altitude: [245, 340] }
       }[type];
       const altitude = stats.altitude || (stats.ranged ? [350, 440] : [480, 480]);
       const spawnSide = fromLeft ? -1 : 1, spawnDistance = runnerVision(spawnSide);
@@ -229,6 +234,8 @@
     }
     function updateTowerDefense() {
       const now = performance.now();
+      const phase = defenseTimeOfDay(), targetLight = phase === 'sunny' ? 1 : phase === 'night' ? 0 : .68;
+      td.timeLight += (targetLight - td.timeLight) * .002;
       if (td.waiting || td.techOpen) return;
       if (td.toSpawn > 0 && now >= td.nextSpawn) { spawnDefenseEnemy(); td.toSpawn--; td.nextSpawn = now + Math.max(10, 45 - td.wave * 4); }
       const turrets = defenseTurrets();
@@ -710,10 +717,10 @@
       const leafColor = activeTree === 'apple' ? '#6ea541' : activeTree === 'pear' ? '#a9b64a' : '#617f42';
       const now = performance.now();
       const timeOfDay = defenseTimeOfDay();
-      const skyColors = timeOfDay === 'sunny' ? ['#79c9ed', '#f6c77b'] : timeOfDay === 'night' ? ['#07101f', '#1b1832'] : ['#f2a55e', '#8ab9d2'];
+      const skyColors = [blendColor('07101f', '#79c9ed', td.timeLight), blendColor('1b1832', '#f6c77b', td.timeLight)];
       const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, skyColors[0]); sky.addColorStop(1, skyColors[1]);
       ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = timeOfDay === 'night' ? '#14151a' : timeOfDay === 'morning' ? '#3a2e2a' : '#5b4736'; ctx.fillRect(0, 500, W, H - 500);
+      ctx.fillStyle = blendColor('14151a', '#5b4736', td.timeLight); ctx.fillRect(0, 500, W, H - 500);
       const tileOffset = ((td.viewOffset % 80) + 80) % 80;
       ctx.strokeStyle = 'rgba(206, 165, 96, .25)'; ctx.lineWidth = 2; for (let x = -80 - tileOffset; x < W + 80; x += 80) { ctx.beginPath(); ctx.moveTo(x, 500); ctx.lineTo(x + 50, H); ctx.stroke(); }
       const treeX = W / 2, treeY = 500;
@@ -734,13 +741,18 @@
         ctx.beginPath(); ctx.arc(0, 0, enemy.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.fillStyle = '#dc7252'; ctx.beginPath(); ctx.arc(enemy.side * 4, -3, 3, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = '#59636b'; ctx.beginPath(); ctx.moveTo(-enemy.r - 6, 7); ctx.lineTo(enemy.r + 6, 7); ctx.stroke();
-        if (enemy.type === 'ground' || enemy.type === 'nightRaider') { ctx.fillStyle = '#20262b'; ctx.beginPath(); ctx.arc(0, -enemy.r * .42, enemy.r * .34, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#71808a'; ctx.stroke(); ctx.fillStyle = '#151b20'; ctx.fillRect(-enemy.r * .38, -enemy.r * .08, enemy.r * .76, enemy.r * .78); ctx.fillStyle = enemy.type === 'nightRaider' ? '#9e7cff' : '#dc7252'; ctx.fillRect(-enemy.r * .18, -enemy.r * .46, 4, 3); ctx.strokeStyle = '#4b565e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-enemy.r * .2, enemy.r * .62); ctx.lineTo(-enemy.r * .36, enemy.r + 7); ctx.moveTo(enemy.r * .2, enemy.r * .62); ctx.lineTo(enemy.r * .36, enemy.r + 7); ctx.stroke(); }
+        if (enemy.type === 'ground' || enemy.type === 'nightRaider' || enemy.type === 'shieldTrooper') { ctx.fillStyle = '#20262b'; ctx.beginPath(); ctx.arc(0, -enemy.r * .42, enemy.r * .34, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#71808a'; ctx.stroke(); ctx.fillStyle = '#151b20'; ctx.fillRect(-enemy.r * .38, -enemy.r * .08, enemy.r * .76, enemy.r * .78); ctx.fillStyle = enemy.type === 'nightRaider' ? '#9e7cff' : '#dc7252'; ctx.fillRect(-enemy.r * .18, -enemy.r * .46, 4, 3); ctx.strokeStyle = '#4b565e'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-enemy.r * .2, enemy.r * .62); ctx.lineTo(-enemy.r * .36, enemy.r + 7); ctx.moveTo(enemy.r * .2, enemy.r * .62); ctx.lineTo(enemy.r * .36, enemy.r + 7); ctx.stroke(); }
         if (enemy.type === 'nightRaider') { ctx.fillStyle = '#39454e'; ctx.fillRect(enemy.side * -enemy.r, -5, enemy.side * -14, 8); ctx.fillStyle = '#71808a'; ctx.fillRect(enemy.side * -enemy.r, -7, enemy.side * -10, 3); }
+        else if (enemy.type === 'shieldTrooper') { ctx.fillStyle = '#34444f'; ctx.fillRect(enemy.side * 2, -enemy.r * .3, enemy.side * 12, enemy.r); ctx.strokeStyle = '#9aabb5'; ctx.strokeRect(enemy.side > 0 ? 2 : -14, -enemy.r * .3, 12, enemy.r); }
         else if (enemy.type === 'tank') { ctx.fillStyle = '#10161a'; ctx.fillRect(-enemy.r - 5, enemy.r - 8, enemy.r * 2 + 10, 12); ctx.strokeStyle = '#71808a'; ctx.strokeRect(-enemy.r - 5, enemy.r - 8, enemy.r * 2 + 10, 12); ctx.fillStyle = '#3e4d55'; ctx.fillRect(-9, -enemy.r - 5, 18, 12); ctx.fillStyle = '#71808a'; ctx.fillRect(enemy.side * 7, -enemy.r - 1, enemy.side * 21, 5); }
         else if (enemy.type === 'armoredCar') { ctx.fillStyle = '#12181d'; ctx.fillRect(-enemy.r, -4, enemy.r * 2, 14); ctx.strokeStyle = '#71808a'; ctx.strokeRect(-enemy.r, -4, enemy.r * 2, 14); ctx.fillStyle = '#33414a'; ctx.fillRect(-7, -enemy.r * .6, 15, 9); ctx.fillStyle = '#080b0e'; ctx.beginPath(); ctx.arc(-enemy.r * .55, enemy.r * .55, 5, 0, Math.PI * 2); ctx.arc(enemy.r * .55, enemy.r * .55, 5, 0, Math.PI * 2); ctx.fill(); }
         else if (enemy.type === 'walker') { ctx.fillStyle = '#161c21'; ctx.fillRect(-enemy.r * .58, -enemy.r * .55, enemy.r * 1.16, enemy.r * .9); ctx.strokeStyle = '#71808a'; ctx.strokeRect(-enemy.r * .58, -enemy.r * .55, enemy.r * 1.16, enemy.r * .9); ctx.strokeStyle = '#46525b'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-enemy.r * .35, enemy.r * .3); ctx.lineTo(-enemy.r * .55, enemy.r + 8); ctx.moveTo(enemy.r * .35, enemy.r * .3); ctx.lineTo(enemy.r * .55, enemy.r + 8); ctx.stroke(); ctx.fillStyle = '#dc7252'; ctx.fillRect(-4, -enemy.r * .3, 8, 4); }
+        else if (enemy.type === 'artillery') { ctx.fillStyle = '#172027'; ctx.fillRect(-enemy.r, -4, enemy.r * 2, 15); ctx.strokeStyle = '#71808a'; ctx.strokeRect(-enemy.r, -4, enemy.r * 2, 15); ctx.fillStyle = '#4a5961'; ctx.fillRect(-8, -enemy.r * .55, 16, 10); ctx.fillRect(enemy.side * 6, -enemy.r * .48, enemy.side * 25, 5); }
+        else if (enemy.type === 'gunship') { ctx.fillStyle = '#18232b'; ctx.beginPath(); ctx.ellipse(0, 0, enemy.r * 1.15, enemy.r * .5, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#71808a'; ctx.stroke(); ctx.fillStyle = '#293943'; ctx.fillRect(-enemy.r * .3, -enemy.r * .85, enemy.r * .6, enemy.r * .6); ctx.fillStyle = '#dc7252'; ctx.fillRect(enemy.side * 8, -3, enemy.side * 12, 5); }
         else if (enemy.type === 'brute') { ctx.fillStyle = '#10161a'; ctx.fillRect(-enemy.r + 3, -enemy.r - 6, enemy.r * 2 - 6, 13); ctx.strokeStyle = '#71808a'; ctx.strokeRect(-enemy.r + 3, -enemy.r - 6, enemy.r * 2 - 6, 13); ctx.fillStyle = '#dc7252'; ctx.fillRect(-4, -enemy.r - 3, 8, 6); }
         else if (enemy.type === 'moonWalker') { ctx.fillStyle = '#0a0b13'; ctx.fillRect(-enemy.r, -7, enemy.r * 2, 22); ctx.strokeStyle = '#9585d8'; ctx.strokeRect(-enemy.r, -7, enemy.r * 2, 22); ctx.fillStyle = '#9e7cff'; ctx.beginPath(); ctx.arc(0, -enemy.r * .5, 6, 0, Math.PI * 2); ctx.fill(); }
+        else if (enemy.type === 'siegeMech') { ctx.fillStyle = '#141720'; ctx.fillRect(-enemy.r * .72, -enemy.r * .55, enemy.r * 1.44, enemy.r * 1.1); ctx.strokeStyle = '#9585d8'; ctx.strokeRect(-enemy.r * .72, -enemy.r * .55, enemy.r * 1.44, enemy.r * 1.1); ctx.fillStyle = '#9e7cff'; ctx.fillRect(-6, -enemy.r * .22, 12, 5); ctx.strokeStyle = '#45505c'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-enemy.r * .42, enemy.r * .45); ctx.lineTo(-enemy.r * .65, enemy.r + 8); ctx.moveTo(enemy.r * .42, enemy.r * .45); ctx.lineTo(enemy.r * .65, enemy.r + 8); ctx.stroke(); }
+        else if (enemy.type === 'specterDrone') { ctx.fillStyle = '#17152a'; ctx.beginPath(); ctx.arc(0, 0, enemy.r, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#9585d8'; ctx.stroke(); ctx.fillStyle = '#9e7cff'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); }
         else if (enemy.type === 'swarm') { ctx.fillStyle = '#10161a'; ctx.fillRect(-enemy.r, -4, enemy.r * 2, 10); ctx.strokeStyle = '#71808a'; ctx.strokeRect(-enemy.r, -4, enemy.r * 2, 10); ctx.fillStyle = '#dc7252'; ctx.beginPath(); ctx.arc(0, -enemy.r * .5, 4, 0, Math.PI * 2); ctx.fill(); }
         else if (enemy.type === 'airship') { ctx.fillStyle = '#20292f'; ctx.beginPath(); ctx.ellipse(0, -6, enemy.r * 1.7, enemy.r * .72, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#71808a'; ctx.stroke(); ctx.fillStyle = '#10161a'; ctx.fillRect(-10, enemy.r * .38, 20, 10); ctx.strokeStyle = '#71808a'; ctx.beginPath(); ctx.moveTo(0, enemy.r * .35); ctx.lineTo(0, -enemy.r * .5); ctx.stroke(); }
         else if (enemy.type === 'jet') { ctx.fillStyle = '#172027'; ctx.beginPath(); ctx.moveTo(enemy.side * enemy.r * 1.6, 0); ctx.lineTo(enemy.side * -enemy.r, -enemy.r * .65); ctx.lineTo(-enemy.side * 2, 0); ctx.lineTo(enemy.side * -enemy.r, enemy.r * .65); ctx.closePath(); ctx.fill(); ctx.strokeStyle = '#71808a'; ctx.stroke(); ctx.fillStyle = '#dc7252'; ctx.fillRect(enemy.side * -3, -3, enemy.side * 9, 6); }
