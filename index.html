@@ -47,7 +47,7 @@
     const defenseUpgrades = { firepower: 0, attackSpeed: 0, turrets: 0, armor: 0, repair: 0 };
     const RUNNER_COST = { material: 2, minerals: 2, water: 2 };
     const runnerGrowCost = level => ({ material: 1 + level, minerals: 1 + level, water: 1 + level });
-    const TURRET_TYPE_COSTS = { acorn: { material: 0, minerals: 0, water: 0 }, rapid: { material: 4, minerals: 3, water: 3 }, cannon: { material: 6, minerals: 5, water: 5 } };
+    const TURRET_TYPE_COSTS = { acorn: { material: 0, minerals: 0, water: 0 }, rapid: { material: 4, minerals: 3, water: 3 }, cannon: { material: 6, minerals: 5, water: 5 }, rapidPlus: { material: 7, minerals: 5, water: 5 }, cannonPlus: { material: 9, minerals: 7, water: 7 } };
     const td = { active: false, wave: 0, toSpawn: 0, nextSpawn: 0, nextAutoShot: 0, nextManualShot: 0, burstReady: 0, treeHealth: 0, enemies: [], shots: [], enemyShots: [], kills: 0, waveRewarded: false, waiting: false, preWave: false, spawnPattern: 'both', spawnCount: 0, timeLight: 1, techOpen: false, techPage: 'defense', turretControlled: false, runners: [], placingRunner: false, turretMenu: false, selectedTurret: 0, turretSettings: [], viewOffset: 0, returnRootX: W / 2, returnRootY: 0, returnDepth: 0, returnTrail: [], dragging: false, dragLastX: 0, wasDragged: false };
     const relicBonuses = { breaker: 0, water: 0, tdPower: 0, tdSpeed: 0 };
     const claimedRelics = new Set();
@@ -222,15 +222,17 @@
     }
     function turretTarget(turret, index) {
       const setting = td.turretSettings[index] || { aim: 'closest' };
-      const visible = td.enemies.filter(enemy => enemyVisible(enemy) && (setting.aim === 'closest' || enemy.group === setting.aim));
-      return visible.reduce((nearest, enemy) => !nearest || Math.hypot(enemy.x - turret.x, enemy.y - turret.y) < Math.hypot(nearest.x - turret.x, nearest.y - turret.y) ? enemy : nearest, null);
+      const visible = td.enemies.filter(enemyVisible);
+      const preferred = setting.aim === 'closest' ? visible : visible.filter(enemy => enemy.group === setting.aim);
+      const targets = preferred.length ? preferred : visible;
+      return targets.reduce((nearest, enemy) => !nearest || Math.hypot(enemy.x - turret.x, enemy.y - turret.y) < Math.hypot(nearest.x - turret.x, nearest.y - turret.y) ? enemy : nearest, null);
     }
     function fireTreeShot(target, turret = defenseTurrets()[0], index = 0) {
       const colors = activeTree === 'apple' ? '#e55346' : activeTree === 'pear' ? '#d9d755' : '#aa7045';
       const type = (td.turretSettings[index] || { type: 'acorn' }).type;
-      const damage = defenseShotDamage() + (type === 'cannon' ? 18 : type === 'rapid' ? -Math.floor(defenseShotDamage() * .35) : 0);
-      const shots = type === 'rapid' ? 2 : 1;
-      for (let shot = 0; shot < shots; shot++) td.shots.push({ x: turret.x, y: turret.y, target, color: type === 'cannon' ? '#ffb35a' : colors, damage });
+      const damage = defenseShotDamage() + (type === 'cannon' ? 18 : type === 'cannonPlus' ? 34 : type === 'rapid' ? -Math.floor(defenseShotDamage() * .35) : type === 'rapidPlus' ? -Math.floor(defenseShotDamage() * .15) : 0);
+      const shots = type === 'rapid' ? 2 : type === 'rapidPlus' ? 3 : 1;
+      for (let shot = 0; shot < shots; shot++) td.shots.push({ x: turret.x, y: turret.y, target, color: type === 'cannon' || type === 'cannonPlus' ? '#ffb35a' : colors, damage });
     }
     function updateTowerDefense() {
       const now = performance.now();
@@ -315,9 +317,20 @@
         if (y > 225 && y < 270 && x > 600 && x < 840) {
           const type = ['acorn', 'rapid', 'cannon'][Math.floor((x - 600) / 80)], cost = TURRET_TYPE_COSTS[type];
           if (type && setting.type !== type && treeGrowth[activeTree] >= cost.material && totalMinerals >= cost.minerals && totalWater >= cost.water) {
-            treeGrowth[activeTree] -= cost.material; totalMinerals -= cost.minerals; totalWater -= cost.water; setting.type = type;
+            treeGrowth[activeTree] -= cost.material; totalMinerals -= cost.minerals; totalWater -= cost.water; setting.type = type; setting.invested = (setting.invested || 0) + cost.material; setting.investedMinerals = (setting.investedMinerals || 0) + cost.minerals; setting.investedWater = (setting.investedWater || 0) + cost.water;
           }
           return;
+        }
+        if (y > 282 && y < 325 && x > 620 && x < 840 && (setting.type === 'rapid' || setting.type === 'cannon')) {
+          const type = setting.type === 'rapid' ? 'rapidPlus' : 'cannonPlus', cost = TURRET_TYPE_COSTS[type];
+          if (treeGrowth[activeTree] >= cost.material && totalMinerals >= cost.minerals && totalWater >= cost.water) {
+            treeGrowth[activeTree] -= cost.material; totalMinerals -= cost.minerals; totalWater -= cost.water; setting.type = type; setting.invested = (setting.invested || 0) + cost.material; setting.investedMinerals = (setting.investedMinerals || 0) + cost.minerals; setting.investedWater = (setting.investedWater || 0) + cost.water;
+          }
+          return;
+        }
+        if (y > 332 && y < 365 && x > 650 && x < 810 && setting.type !== 'acorn') {
+          treeGrowth[activeTree] += setting.invested || 0; totalMinerals += setting.investedMinerals || 0; totalWater += setting.investedWater || 0;
+          setting.type = 'acorn'; setting.invested = 0; setting.investedMinerals = 0; setting.investedWater = 0; return;
         }
         return;
       }
@@ -702,13 +715,15 @@
 
     function drawTurretMenu() {
       const setting = td.turretSettings[td.selectedTurret] || { aim: 'closest', type: 'acorn' };
-      ctx.fillStyle = 'rgba(9, 16, 20, .96)'; ctx.fillRect(590, 95, 280, 190); ctx.strokeStyle = '#e5c77f'; ctx.lineWidth = 2; ctx.strokeRect(590, 95, 280, 190);
+      ctx.fillStyle = 'rgba(9, 16, 20, .96)'; ctx.fillRect(590, 95, 280, 280); ctx.strokeStyle = '#e5c77f'; ctx.lineWidth = 2; ctx.strokeRect(590, 95, 280, 280);
       ctx.textAlign = 'center'; ctx.fillStyle = '#fff1cc'; ctx.font = 'bold 17px Georgia'; ctx.fillText('TURRET ' + (td.selectedTurret + 1), 730, 123);
-      ctx.font = '13px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('AIM PRIORITY', 730, 148);
+      ctx.font = '13px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('AIM PRIORITY — FALLS BACK TO ALL', 730, 148);
       ['closest', 'ground', 'ranged', 'tank'].forEach((aim, index) => { const x = 600 + index * 65; ctx.fillStyle = setting.aim === aim ? '#4b7a3d' : '#39443b'; ctx.fillRect(x, 155, 60, 42); ctx.strokeStyle = '#dcefb9'; ctx.strokeRect(x, 155, 60, 42); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(aim.toUpperCase(), x + 30, 180); });
       ctx.font = '13px system-ui'; ctx.fillStyle = '#dce7ce'; ctx.fillText('TURRET TYPE', 730, 218);
       ['acorn', 'rapid', 'cannon'].forEach((type, index) => { const x = 600 + index * 80, cost = TURRET_TYPE_COSTS[type]; ctx.fillStyle = setting.type === type ? '#a16b3d' : '#39443b'; ctx.fillRect(x, 225, 75, 42); ctx.strokeStyle = '#f0d37e'; ctx.strokeRect(x, 225, 75, 42); ctx.fillStyle = '#fff8df'; ctx.font = 'bold 10px system-ui'; ctx.fillText(type.toUpperCase(), x + 37, 244); ctx.font = '9px system-ui'; ctx.fillText(cost.material + '/' + cost.minerals + '/' + cost.water, x + 37, 259); });
       ctx.fillStyle = '#dce7ce'; ctx.font = '10px system-ui'; ctx.fillText('Costs: tree material / mineral / water', 730, 278);
+      if (setting.type === 'rapid' || setting.type === 'cannon') { const type = setting.type === 'rapid' ? 'rapidPlus' : 'cannonPlus', cost = TURRET_TYPE_COSTS[type], label = setting.type === 'rapid' ? 'TRIPLE RAPID' : 'SIEGE CANNON'; ctx.fillStyle = '#4b6378'; ctx.fillRect(620, 285, 220, 38); ctx.strokeStyle = '#b9d7e7'; ctx.strokeRect(620, 285, 220, 38); ctx.fillStyle = '#f4fbff'; ctx.font = 'bold 12px system-ui'; ctx.fillText(label + '  ' + cost.material + '/' + cost.minerals + '/' + cost.water, 730, 309); }
+      if (setting.type !== 'acorn') { ctx.fillStyle = '#704947'; ctx.fillRect(650, 333, 160, 28); ctx.strokeStyle = '#f0b3a7'; ctx.strokeRect(650, 333, 160, 28); ctx.fillStyle = '#fff3e8'; ctx.font = 'bold 11px system-ui'; ctx.fillText('REFUND & REVERT', 730, 352); }
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 13px system-ui'; ctx.fillText('×', 850, 118); ctx.textAlign = 'start';
     }
 
