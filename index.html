@@ -189,20 +189,20 @@
       const stats = {
         ground: { hp: 26, hpScale: 7, speed: .48, r: 16, damage: 9, group: 'ground' },
         shieldTrooper: { hp: 62, hpScale: 11, speed: .3, r: 18, damage: 11, group: 'ground' },
-        airship: { hp: 38, hpScale: 8, speed: .25, r: 24, damage: 4, ranged: true, range: 300, group: 'ranged', altitude: [260, 340] },
+        airship: { hp: 38, hpScale: 8, speed: .25, r: 24, damage: 4, ranged: true, range: 190, group: 'ranged', altitude: [260, 340] },
         tank: { hp: 72, hpScale: 14, speed: .23, r: 24, damage: 18, group: 'tank' },
         armoredCar: { hp: 52, hpScale: 11, speed: .5, r: 20, damage: 14, group: 'tank' },
         walker: { hp: 86, hpScale: 15, speed: .32, r: 25, damage: 20, group: 'tank' },
-        artillery: { hp: 54, hpScale: 10, speed: .22, r: 22, damage: 7, ranged: true, range: 390, group: 'ranged', altitude: [390, 440] },
-        gunship: { hp: 70, hpScale: 12, speed: .38, r: 25, damage: 6, ranged: true, range: 360, group: 'ranged', altitude: [210, 300] },
+        artillery: { hp: 54, hpScale: 10, speed: .22, r: 22, damage: 7, ranged: true, range: 220, group: 'ranged', altitude: [390, 440] },
+        gunship: { hp: 70, hpScale: 12, speed: .38, r: 25, damage: 6, ranged: true, range: 210, group: 'ranged', altitude: [210, 300] },
         swarm: { hp: 10, hpScale: 4, speed: .82, r: 10, damage: 5, group: 'ground' },
         brute: { hp: 108, hpScale: 18, speed: .18, r: 29, damage: 28, group: 'tank' },
-        nightRaider: { hp: 34, hpScale: 8, speed: .6, r: 16, damage: 5, ranged: true, range: 310, group: 'ranged' },
+        nightRaider: { hp: 34, hpScale: 8, speed: .6, r: 16, damage: 5, ranged: true, range: 200, group: 'ranged' },
         moonWalker: { hp: 92, hpScale: 16, speed: .3, r: 25, damage: 22, group: 'tank' },
-        specterDrone: { hp: 22, hpScale: 6, speed: .88, r: 12, damage: 4, ranged: true, range: 365, group: 'ranged', altitude: [210, 340] },
+        specterDrone: { hp: 22, hpScale: 6, speed: .88, r: 12, damage: 4, ranged: true, range: 205, group: 'ranged', altitude: [210, 340] },
         siegeMech: { hp: 128, hpScale: 20, speed: .16, r: 31, damage: 32, group: 'tank' },
-        jet: { hp: 28, hpScale: 7, speed: 1.1, r: 16, damage: 6, ranged: true, range: 430, group: 'ranged', altitude: [145, 230] },
-        helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 5, ranged: true, range: 345, group: 'ranged', altitude: [245, 340] }
+        jet: { hp: 28, hpScale: 7, speed: 1.1, r: 16, damage: 6, ranged: true, range: 250, group: 'ranged', altitude: [145, 230] },
+        helicopter: { hp: 50, hpScale: 10, speed: .48, r: 20, damage: 5, ranged: true, range: 210, group: 'ranged', altitude: [245, 340] }
       }[type];
       const altitude = stats.altitude || (stats.ranged ? [350, 440] : [480, 480]);
       const spawnSide = fromLeft ? -1 : 1, spawnDistance = runnerVision(spawnSide);
