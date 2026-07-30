@@ -138,7 +138,7 @@
     }
     function ensureRelicsThrough(depthMeters) {
       for (let meters = RELIC_DEPTH; meters <= depthMeters; meters += RELIC_DEPTH) {
-        if (!relics.some(relic => relic.meters === meters)) relics.push({ meters, x: rand(120, W - 120), y: meters * 10, r: 42, tunneled: claimedRelics.has(meters), claimed: claimedRelics.has(meters) });
+        if (!relics.some(relic => relic.meters === meters)) relics.push({ meters, x: W / 2, y: meters * 10, r: 64, tunneled: claimedRelics.has(meters), claimed: claimedRelics.has(meters) });
       }
     }
     function overlapsObstacle(candidate) {
